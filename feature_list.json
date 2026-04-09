@@ -1,0 +1,58 @@
+[
+  {
+    "id": 1,
+    "category": "infrastructure",
+    "description": "PostgreSQL database schema with all tables for trademarks, patents, ETL tracking, and data quality",
+    "steps": ["Create schema SQL", "Initialize database on T7", "Verify all tables exist"],
+    "passes": true
+  },
+  {
+    "id": 2,
+    "category": "etl",
+    "description": "Trademark XML streaming ETL - parse apc*.zip files one by one into PostgreSQL",
+    "steps": ["Stream-parse XML without full decompression", "Extract key fields into trademarks table", "Track ETL progress per zip", "Log data quality issues", "Process all 90 files"],
+    "passes": true
+  },
+  {
+    "id": 3,
+    "category": "etl",
+    "description": "Patent File Wrapper JSON streaming ETL - parse year JSON files into PostgreSQL",
+    "steps": ["Stream-parse JSON from zip without full extraction", "Extract bibliographic, claims, assignee data", "Flag design patents", "Track ETL progress per year file", "Log data quality issues", "Process all 3 zips (6 year files)"],
+    "passes": true
+  },
+  {
+    "id": 4,
+    "category": "validation",
+    "description": "Data completeness validation and quality report",
+    "steps": ["Patent number continuity check", "Cross-validate record counts", "Missing field statistics", "Generate completeness report"],
+    "passes": false
+  },
+  {
+    "id": 5,
+    "category": "functional",
+    "description": "Trademark text matching engine with inverted index",
+    "steps": ["Build trigram index on brand names", "Fuzzy match API endpoint", "Test with sample SKU titles", "Benchmark query speed at scale"],
+    "passes": false
+  },
+  {
+    "id": 6,
+    "category": "functional",
+    "description": "Design patent image pipeline - extract images from bulk data, generate CLIP embeddings, store in Milvus",
+    "steps": ["Filter design patents from DB", "Download/extract design patent images", "Generate CLIP embeddings with OpenCLIP", "Store vectors in Milvus", "Image similarity search API endpoint"],
+    "passes": false
+  },
+  {
+    "id": 7,
+    "category": "functional",
+    "description": "Comprehensive risk scoring API (FastAPI)",
+    "steps": ["POST /check/trademark endpoint", "POST /check/patent-image endpoint", "POST /check/comprehensive endpoint with scoring model", "GET /risk/{entity} endpoint", "GET /admin/etl-status endpoint"],
+    "passes": false
+  },
+  {
+    "id": 8,
+    "category": "integration",
+    "description": "ERP integration layer - REST API with Java-friendly interface",
+    "steps": ["Standardized JSON request/response format", "Authentication and rate limiting", "Batch check endpoint for bulk SKU scanning", "API documentation (OpenAPI/Swagger)"],
+    "passes": false
+  }
+]
