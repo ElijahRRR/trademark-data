@@ -323,8 +323,11 @@ def download_file(page, filename, wid):
 
         answer = solve_captcha(page)
         if answer is None:
-            log.warning(f"  W{wid}: 验证码解析失败 (attempt {attempt + 1})")
+            log.warning(f"  W{wid}: 验证码解析失败 (attempt {attempt + 1})，刷新页面")
             page.evaluate(CLOSE_DIALOG_JS)
+            time.sleep(1)
+            page.reload(timeout=60000)
+            page.wait_for_selector("table tbody tr", timeout=30000)
             time.sleep(2)
             continue
 
@@ -347,8 +350,11 @@ def download_file(page, filename, wid):
             log.warning(f"  W{wid}: 获取 URL 失败 (attempt {attempt + 1}): {e}")
             still_captcha = page.evaluate("!!document.querySelector('.jCaptchaCanvas')")
             if still_captcha:
-                log.info(f"  W{wid}: 验证码错误，重试...")
+                log.info(f"  W{wid}: 验证码错误，刷新页面重试")
                 page.evaluate(CLOSE_DIALOG_JS)
+                time.sleep(1)
+                page.reload(timeout=60000)
+                page.wait_for_selector("table tbody tr", timeout=30000)
                 time.sleep(2)
                 continue
             if "bulkdata/datasets/ptgrdt" not in page.url:
