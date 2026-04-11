@@ -16,6 +16,7 @@ import os
 import sys
 import json
 import time
+import random
 import logging
 import argparse
 import signal
@@ -325,7 +326,13 @@ def download_file(page, filename, wid):
             log.warning(f"  W{wid}: 链接未找到: {filename}")
             return None
 
-        time.sleep(3)
+        # 等待对话框出现，而非固定 sleep
+        try:
+            page.wait_for_selector("p-dialog", timeout=10000)
+            time.sleep(1)
+        except Exception:
+            log.warning(f"  W{wid}: 对话框未出现 (attempt {attempt + 1})")
+            continue
 
         answer = solve_captcha(page)
         if answer is None:
@@ -407,6 +414,12 @@ def process_downloaded_file(tar_path, filename, wid):
 def run_worker(worker_id):
     """单个 worker 的下载循环"""
     from playwright.sync_api import sync_playwright
+
+    # 错开启动，避免 5 个 worker 同时解验证码被服务器拒绝
+    if worker_id > 0:
+        delay = worker_id * 3
+        log.info(f"W{worker_id} 等待 {delay}s 后启动")
+        time.sleep(delay)
 
     log.info(f"W{worker_id} 启动")
 
