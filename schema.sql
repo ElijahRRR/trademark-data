@@ -3,6 +3,7 @@
 
 -- Extensions
 CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- trigram fuzzy matching
+CREATE EXTENSION IF NOT EXISTS vector;   -- pgvector for CLIP embeddings
 
 ---------------------------------------------------------------------
 -- TRADEMARKS
@@ -82,80 +83,75 @@ CREATE TABLE IF NOT EXISTS trademark_design_codes (
 );
 
 ---------------------------------------------------------------------
--- PATENTS (File Wrapper)
+-- PATENT GRANTS (PTGRDT Red Book)
 ---------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS patents (
-    application_number TEXT PRIMARY KEY,
-    invention_title TEXT,
-    filing_date     DATE,
-    effective_filing_date DATE,
-    application_type TEXT,               -- UTL, DES, PLT, PPA, etc
-    application_type_label TEXT,         -- Utility, Design, Plant, etc
-    application_status_code TEXT,
-    application_status_desc TEXT,
-    application_status_date DATE,
-    group_art_unit  TEXT,
-    class           TEXT,                -- USPC class
-    subclass        TEXT,
-    customer_number INTEGER,
-    docket_number   TEXT,
-    first_inventor_name TEXT,
-    first_applicant_name TEXT,
-    entity_status   TEXT,                -- Small, Micro, Regular
-    small_entity    BOOLEAN DEFAULT FALSE,
-    national_stage  BOOLEAN DEFAULT FALSE,
-    is_design_patent BOOLEAN DEFAULT FALSE,
-    -- source tracking
-    source_file     TEXT,                -- which year JSON
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS patent_grants (
+    patent_number       TEXT PRIMARY KEY,    -- D1034980, 12034149
+    kind                TEXT,                -- S1 (design), B1/B2 (utility)
+    application_number  TEXT,                -- 29749819
+    appl_type           TEXT,                -- design, utility, plant, reissue
+    title               TEXT,
+    grant_date          DATE,
+    filing_date         DATE,
+    abstract            TEXT,                -- UTIL only, DESIGN typically NULL
+    num_claims          INTEGER,
+    num_figures         INTEGER,
+    num_drawing_sheets  INTEGER,
+    term_years          INTEGER,             -- DESIGN: 15
+    term_extension_days INTEGER,             -- UTIL: PTA days
+    source_tar          TEXT,                -- e.g. I20240709.tar
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Patent assignees (rights holders / companies)
+CREATE TABLE IF NOT EXISTS patent_grant_assignees (
+    id              BIGSERIAL PRIMARY KEY,
+    patent_number   TEXT NOT NULL REFERENCES patent_grants(patent_number),
+    orgname         TEXT,                    -- company name
+    first_name      TEXT,                    -- individual assignee
+    last_name       TEXT,
+    city            TEXT,
+    state           TEXT,
+    country         TEXT
 );
 
 -- Patent inventors
-CREATE TABLE IF NOT EXISTS patent_inventors (
+CREATE TABLE IF NOT EXISTS patent_grant_inventors (
     id              BIGSERIAL PRIMARY KEY,
-    application_number TEXT NOT NULL REFERENCES patents(application_number),
+    patent_number   TEXT NOT NULL REFERENCES patent_grants(patent_number),
     first_name      TEXT,
     last_name       TEXT,
-    full_name       TEXT,
     city            TEXT,
-    country_code    TEXT
+    state           TEXT,
+    country         TEXT
 );
 
--- Patent applicants (may differ from inventors)
-CREATE TABLE IF NOT EXISTS patent_applicants (
+-- Patent classifications (CPC, Locarno, USPC)
+CREATE TABLE IF NOT EXISTS patent_grant_classifications (
     id              BIGSERIAL PRIMARY KEY,
-    application_number TEXT NOT NULL REFERENCES patents(application_number),
-    applicant_name  TEXT,
-    city            TEXT,
-    country_code    TEXT
+    patent_number   TEXT NOT NULL REFERENCES patent_grants(patent_number),
+    system          TEXT NOT NULL,           -- 'cpc', 'locarno', 'uspc'
+    code            TEXT NOT NULL,           -- H01M 4/364, 2402, D24135
+    is_main         BOOLEAN DEFAULT FALSE
 );
 
--- Patent correspondence address
-CREATE TABLE IF NOT EXISTS patent_correspondence (
+-- Patent citations
+CREATE TABLE IF NOT EXISTS patent_grant_citations (
     id              BIGSERIAL PRIMARY KEY,
-    application_number TEXT NOT NULL REFERENCES patents(application_number),
-    name            TEXT,
-    address_line1   TEXT,
-    city            TEXT,
-    region_code     TEXT,
-    postal_code     TEXT,
-    country_code    TEXT
+    patent_number   TEXT NOT NULL REFERENCES patent_grants(patent_number),
+    cited_doc_number TEXT,
+    cited_country   TEXT,
+    cited_kind      TEXT,
+    category        TEXT                     -- 'cited by applicant', 'cited by examiner'
 );
 
--- Patent events (prosecution history)
-CREATE TABLE IF NOT EXISTS patent_events (
+-- Patent images (DESIGN only, stores file path + CLIP embedding)
+CREATE TABLE IF NOT EXISTS patent_grant_images (
     id              BIGSERIAL PRIMARY KEY,
-    application_number TEXT NOT NULL REFERENCES patents(application_number),
-    event_code      TEXT,
-    event_date      DATE,
-    event_description TEXT
-);
-
--- Patent publication info
-CREATE TABLE IF NOT EXISTS patent_publications (
-    id              BIGSERIAL PRIMARY KEY,
-    application_number TEXT NOT NULL REFERENCES patents(application_number),
-    publication_category TEXT
+    patent_number   TEXT NOT NULL REFERENCES patent_grants(patent_number),
+    image_name      TEXT NOT NULL,           -- D00001.TIF
+    image_path      TEXT NOT NULL,           -- design_images/D1034980/D00001.TIF
+    embedding       vector(512)              -- CLIP ViT-B/32, filled later
 );
 
 ---------------------------------------------------------------------
@@ -213,25 +209,42 @@ CREATE INDEX IF NOT EXISTS idx_tm_owners_name_trgm
 CREATE INDEX IF NOT EXISTS idx_tm_design_codes_serial
     ON trademark_design_codes(serial_number);
 
--- Patent lookup
-CREATE INDEX IF NOT EXISTS idx_patents_title_trgm
-    ON patents USING gin (invention_title gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS idx_patents_type
-    ON patents(application_type);
-CREATE INDEX IF NOT EXISTS idx_patents_design
-    ON patents(is_design_patent) WHERE is_design_patent = TRUE;
-CREATE INDEX IF NOT EXISTS idx_patents_filing_date
-    ON patents(filing_date);
-CREATE INDEX IF NOT EXISTS idx_patents_status
-    ON patents(application_status_code);
+-- Patent grants lookup
+CREATE INDEX IF NOT EXISTS idx_pg_title_trgm
+    ON patent_grants USING gin (title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_pg_appl_type
+    ON patent_grants(appl_type);
+CREATE INDEX IF NOT EXISTS idx_pg_grant_date
+    ON patent_grants(grant_date);
+CREATE INDEX IF NOT EXISTS idx_pg_app_number
+    ON patent_grants(application_number);
 
--- Patent relations
-CREATE INDEX IF NOT EXISTS idx_pat_inventors_appnum
-    ON patent_inventors(application_number);
-CREATE INDEX IF NOT EXISTS idx_pat_applicants_appnum
-    ON patent_applicants(application_number);
-CREATE INDEX IF NOT EXISTS idx_pat_events_appnum
-    ON patent_events(application_number);
+-- Patent assignees (key for company/brand lookup)
+CREATE INDEX IF NOT EXISTS idx_pga_patent
+    ON patent_grant_assignees(patent_number);
+CREATE INDEX IF NOT EXISTS idx_pga_orgname_trgm
+    ON patent_grant_assignees USING gin (orgname gin_trgm_ops);
+
+-- Patent inventors
+CREATE INDEX IF NOT EXISTS idx_pgi_patent
+    ON patent_grant_inventors(patent_number);
+
+-- Patent classifications
+CREATE INDEX IF NOT EXISTS idx_pgc_patent
+    ON patent_grant_classifications(patent_number);
+CREATE INDEX IF NOT EXISTS idx_pgc_code
+    ON patent_grant_classifications(code);
+
+-- Patent citations
+CREATE INDEX IF NOT EXISTS idx_pgcit_patent
+    ON patent_grant_citations(patent_number);
+
+-- Patent images + vector similarity search
+CREATE INDEX IF NOT EXISTS idx_pgimg_patent
+    ON patent_grant_images(patent_number);
+-- HNSW index for CLIP vector similarity (created after embeddings are filled)
+-- CREATE INDEX IF NOT EXISTS idx_pgimg_embedding
+--     ON patent_grant_images USING hnsw (embedding vector_cosine_ops);
 
 -- ETL tracking
 CREATE INDEX IF NOT EXISTS idx_etl_progress_lookup
