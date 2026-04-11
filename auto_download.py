@@ -234,6 +234,24 @@ def solve_captcha(page):
 
 SURGE_PROXY = "http://127.0.0.1:6152"
 
+MAX_NAV_RETRIES = 3
+
+
+def _navigate_to_list(page, wid, target_page=1):
+    """导航到列表页并翻到指定页码，失败最多重试 MAX_NAV_RETRIES 次"""
+    for attempt in range(MAX_NAV_RETRIES):
+        try:
+            page.goto(PAGE_URL, timeout=90000)
+            page.wait_for_selector("table tbody tr", timeout=30000)
+            time.sleep(2)
+            for _ in range(target_page - 1):
+                goto_next_page(page)
+            return True
+        except Exception as e:
+            log.warning(f"  W{wid}: 导航失败 (attempt {attempt + 1}/{MAX_NAV_RETRIES}): {e}")
+            time.sleep(5 * (attempt + 1))
+    return False
+
 
 PROGRESS_INTERVAL = 15  # 秒
 
@@ -335,9 +353,8 @@ def download_file(page, filename, wid):
                 continue
             if "bulkdata/datasets/ptgrdt" not in page.url:
                 log.info(f"  W{wid}: 页面跳转，导航回列表页")
-                page.goto(PAGE_URL, timeout=60000)
-                page.wait_for_selector("table tbody tr", timeout=30000)
-                time.sleep(2)
+                if not _navigate_to_list(page, wid):
+                    log.error(f"  W{wid}: 导航回列表页失败")
                 return None
 
     log.error(f"  W{wid}: {filename} 全部失败")
@@ -390,9 +407,9 @@ def run_worker(worker_id):
         with _lock:
             _browsers.append(browser)
 
-        page.goto(PAGE_URL, timeout=60000)
-        page.wait_for_selector("table tbody tr", timeout=30000)
-        time.sleep(2)
+        if not _navigate_to_list(page, worker_id):
+            log.error(f"W{worker_id}: 初始导航失败，退出")
+            return
 
         current_page = 1
         downloaded = 0
@@ -461,11 +478,18 @@ def run_worker(worker_id):
 
                 # 确保回到列表页
                 if "bulkdata/datasets/ptgrdt" not in page.url:
-                    page.goto(PAGE_URL, timeout=60000)
-                    page.wait_for_selector("table tbody tr", timeout=30000)
-                    time.sleep(2)
-                    for _ in range(current_page - 1):
-                        goto_next_page(page)
+                    if not _navigate_to_list(page, worker_id, current_page):
+                        log.error(f"W{worker_id}: 无法导航回列表页，重建浏览器")
+                        try:
+                            browser.close()
+                        except Exception:
+                            pass
+                        browser, context, page = create_browser(pw)
+                        with _lock:
+                            _browsers.append(browser)
+                        if not _navigate_to_list(page, worker_id, current_page):
+                            log.error(f"W{worker_id}: 重建后仍无法导航，退出")
+                            break
 
             finally:
                 release_file(target)
