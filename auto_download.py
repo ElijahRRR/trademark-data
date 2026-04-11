@@ -226,6 +226,12 @@ def click_file(page, filename):
 
 
 def solve_captcha(page):
+    # 等待 canvas 元素出现并渲染完成
+    try:
+        page.wait_for_selector(".jCaptchaCanvas", timeout=10000)
+        time.sleep(1)  # 等 canvas 绘制完成
+    except Exception:
+        return None
     grid = page.evaluate(read_captcha_js())
     if not grid:
         return None
