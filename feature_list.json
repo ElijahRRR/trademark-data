@@ -1,58 +1,105 @@
 [
   {
     "id": 1,
-    "category": "infrastructure",
-    "description": "PostgreSQL database schema with all tables for trademarks, patents, ETL tracking, and data quality",
-    "steps": ["Create schema SQL", "Initialize database on T7", "Verify all tables exist"],
-    "passes": true
+    "category": "schema",
+    "description": "更新 schema.sql：删除旧专利表定义，新建 patent_grants + 子表 + pgvector 扩展",
+    "steps": [
+      "移除 schema.sql 中旧 PATENTS 区块 (patents, patent_inventors, patent_applicants, patent_correspondence, patent_events, patent_publications) 及其索引",
+      "新增 patent_grants 主表 (patent_number PK, kind, application_number, appl_type, title, grant_date, filing_date, abstract, term, source_tar 等)",
+      "新增 patent_grant_assignees 表 (orgname, first_name, last_name, city, state, country)",
+      "新增 patent_grant_inventors 表",
+      "新增 patent_grant_classifications 表 (system, code, is_main)",
+      "新增 patent_grant_citations 表",
+      "新增 patent_grant_images 表 (image_path, source_tar, source_zip, embedding vector(512))",
+      "添加 pgvector 扩展声明",
+      "添加关键索引：assignee orgname gin_trgm, title gin_trgm, appl_type, grant_date"
+    ],
+    "passes": false
   },
   {
     "id": 2,
     "category": "etl",
-    "description": "Trademark XML streaming ETL - parse apc*.zip files one by one into PostgreSQL",
-    "steps": ["Stream-parse XML without full decompression", "Extract key fields into trademarks table", "Track ETL progress per zip", "Log data quality issues", "Process all 90 files"],
-    "passes": true
+    "description": "创建 etl_patent_grants.py：parse_patent_xml() 解析单个专利 XML 返回结构化 dict",
+    "steps": [
+      "函数接收 xml_bytes，用 lxml 解析",
+      "提取主表字段：patent_number, kind, application_number, appl_type, title, grant_date, filing_date, abstract, num_claims, num_figures, term",
+      "提取 assignees 列表",
+      "提取 inventors 列表",
+      "提取 classifications 列表 (CPC + Locarno + USPC)",
+      "提取 citations 列表",
+      "用样例 DESIGN + UTIL XML 验证解析结果正确"
+    ],
+    "passes": false
   },
   {
     "id": 3,
     "category": "etl",
-    "description": "Patent File Wrapper JSON streaming ETL - parse year JSON files into PostgreSQL",
-    "steps": ["Stream-parse JSON from zip without full extraction", "Extract bibliographic, claims, assignee data", "Flag design patents", "Track ETL progress per year file", "Log data quality issues", "Process all 3 zips (6 year files)"],
-    "passes": true
+    "description": "创建 etl_patent_grants.py：insert_patent() 写入 PostgreSQL，ON CONFLICT 跳过",
+    "steps": [
+      "DB_CONFIG 连接配置",
+      "insert_patent(conn, patent_dict) 插入主表 + 所有子表",
+      "ON CONFLICT (patent_number) DO NOTHING 防重复",
+      "子表先删再插（同一 patent_number 的子行）",
+      "支持批量提交（每 N 条 commit 一次）"
+    ],
+    "passes": false
   },
   {
     "id": 4,
-    "category": "validation",
-    "description": "Data completeness validation and quality report",
-    "steps": ["Patent number continuity check", "Cross-validate record counts", "Missing field statistics", "Generate completeness report"],
+    "category": "etl",
+    "description": "创建 etl_patent_grants.py：process_tar() 遍历 tar 内所有 ZIP，解析 XML + 入库 + 提取 DESIGN 图片到磁盘",
+    "steps": [
+      "打开 tar，遍历所有 .ZIP 成员",
+      "每个 ZIP：解析 XML → insert_patent()",
+      "DESIGN 专利：额外提取所有 TIFF 文件保存到磁盘 (PROJECT_DIR/design_images/{patent_number}/)",
+      "记录图片信息到 patent_grant_images 表 (image_path, source_tar, source_zip)",
+      "跳过 SUPP 类型的 ZIP",
+      "记录 etl_progress 表",
+      "返回处理统计 stats dict"
+    ],
     "passes": false
   },
   {
     "id": 5,
-    "category": "functional",
-    "description": "Trademark text matching engine with inverted index",
-    "steps": ["Build trigram index on brand names", "Fuzzy match API endpoint", "Test with sample SKU titles", "Benchmark query speed at scale"],
+    "category": "integration",
+    "description": "改造 auto_download.py：替换旧 import，集成新 ETL 模块",
+    "steps": [
+      "删除 from patent_image_pipeline import ... 行",
+      "改为 from etl_patent_grants import process_tar",
+      "重写 process_downloaded_file() 使用新 process_tar",
+      "进度追踪改用 etl_progress 表替代 JSON 文件",
+      "移除所有 pipeline_progress.json 相关代码 (load_progress, save_progress, PROGRESS_FILE, _progress_lock)",
+      "get_processed_files() 改为查询数据库",
+      "show_status() 改为查询数据库"
+    ],
     "passes": false
   },
   {
     "id": 6,
-    "category": "functional",
-    "description": "Design patent image pipeline - extract images from bulk data, generate CLIP embeddings, store in Milvus",
-    "steps": ["Filter design patents from DB", "Download/extract design patent images", "Generate CLIP embeddings with OpenCLIP", "Store vectors in Milvus", "Image similarity search API endpoint"],
+    "category": "deploy",
+    "description": "在 PostgreSQL 执行 schema 迁移，创建新表",
+    "steps": [
+      "执行 CREATE EXTENSION IF NOT EXISTS vector",
+      "执行新表的 CREATE TABLE 语句",
+      "执行新索引的 CREATE INDEX 语句",
+      "验证表创建成功：\\dt patent_grant*"
+    ],
     "passes": false
   },
   {
     "id": 7,
-    "category": "functional",
-    "description": "Comprehensive risk scoring API (FastAPI)",
-    "steps": ["POST /check/trademark endpoint", "POST /check/patent-image endpoint", "POST /check/comprehensive endpoint with scoring model", "GET /risk/{entity} endpoint", "GET /admin/etl-status endpoint"],
-    "passes": false
-  },
-  {
-    "id": 8,
-    "category": "integration",
-    "description": "ERP integration layer - REST API with Java-friendly interface",
-    "steps": ["Standardized JSON request/response format", "Authentication and rate limiting", "Batch check endpoint for bulk SKU scanning", "API documentation (OpenAPI/Swagger)"],
+    "category": "test",
+    "description": "用 I20240709.tar 端到端测试完整流程",
+    "steps": [
+      "运行 process_tar('/Users/nextderboy/Desktop/I20240709.tar')",
+      "验证 patent_grants 表有 ~7935 行 (UTIL+DESIGN+PLANT+REISSUE)",
+      "验证 patent_grant_assignees 表有数据",
+      "验证 patent_grant_classifications 表有 CPC + Locarno 数据",
+      "验证 patent_grant_images 表有 DESIGN 图片记录",
+      "验证 design_images/ 目录下有 TIFF 文件",
+      "验证 etl_progress 表记录了该 tar 的处理状态",
+      "确认 UTIL 专利没有提取图片"
+    ],
     "passes": false
   }
 ]
