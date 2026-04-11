@@ -14,7 +14,7 @@
       "添加 pgvector 扩展声明",
       "添加关键索引：assignee orgname gin_trgm, title gin_trgm, appl_type, grant_date"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 2,
@@ -29,7 +29,7 @@
       "提取 citations 列表",
       "用样例 DESIGN + UTIL XML 验证解析结果正确"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 3,
@@ -42,7 +42,7 @@
       "子表先删再插（同一 patent_number 的子行）",
       "支持批量提交（每 N 条 commit 一次）"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 4,
@@ -57,7 +57,7 @@
       "记录 etl_progress 表",
       "返回处理统计 stats dict"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 5,
@@ -72,7 +72,7 @@
       "get_processed_files() 改为查询数据库",
       "show_status() 改为查询数据库"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 6,
@@ -84,7 +84,7 @@
       "执行新索引的 CREATE INDEX 语句",
       "验证表创建成功：\\dt patent_grant*"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 7,
@@ -100,6 +100,6 @@
       "验证 etl_progress 表记录了该 tar 的处理状态",
       "确认 UTIL 专利没有提取图片"
     ],
-    "passes": false
+    "passes": true
   }
 ]
