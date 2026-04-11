@@ -326,13 +326,7 @@ def download_file(page, filename, wid):
             log.warning(f"  W{wid}: 链接未找到: {filename}")
             return None
 
-        # 等待对话框出现，而非固定 sleep
-        try:
-            page.wait_for_selector("p-dialog", timeout=10000)
-            time.sleep(1)
-        except Exception:
-            log.warning(f"  W{wid}: 对话框未出现 (attempt {attempt + 1})")
-            continue
+        time.sleep(3)
 
         answer = solve_captcha(page)
         if answer is None:
