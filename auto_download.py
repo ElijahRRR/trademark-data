@@ -69,6 +69,11 @@ _lock = threading.Lock()
 _claimed = set()
 _claim_lock = threading.Lock()
 
+# 本次 session 下载失败计数，失败 >= 2 次则跳过，下次启动重试
+_fail_count = {}
+_fail_lock = threading.Lock()
+MAX_DOWNLOAD_RETRIES = 2
+
 # 停止标志
 _stop = False
 
@@ -144,6 +149,19 @@ def claim_file(filename):
 def release_file(filename):
     with _claim_lock:
         _claimed.discard(filename)
+
+
+def record_fail(filename):
+    """记录下载失败，返回累计失败次数"""
+    with _fail_lock:
+        _fail_count[filename] = _fail_count.get(filename, 0) + 1
+        return _fail_count[filename]
+
+
+def is_skipped(filename):
+    """本次 session 是否已跳过（失败 >= MAX_DOWNLOAD_RETRIES 次）"""
+    with _fail_lock:
+        return _fail_count.get(filename, 0) >= MAX_DOWNLOAD_RETRIES
 
 
 # ─── Playwright 操作 ───
@@ -388,7 +406,7 @@ def run_worker(worker_id):
                 log.warning(f"W{worker_id}: 页面无文件")
                 break
 
-            unprocessed = [f for f in page_files if f not in processed]
+            unprocessed = [f for f in page_files if f not in processed and not is_skipped(f)]
 
             if not unprocessed:
                 if goto_next_page(page):
@@ -427,8 +445,13 @@ def run_worker(worker_id):
                         log.info(f"W{worker_id}: 累计 {total}/1390 ({total/1390*100:.1f}%)")
                     consecutive_skip = 0
                 else:
+                    fails = record_fail(target)
+                    if fails >= MAX_DOWNLOAD_RETRIES:
+                        log.warning(f"W{worker_id}: {target} 失败 {fails} 次，本次跳过")
+                    else:
+                        log.info(f"W{worker_id}: {target} 失败 {fails}/{MAX_DOWNLOAD_RETRIES}，稍后重试")
                     consecutive_skip += 1
-                    if consecutive_skip >= 3:
+                    if consecutive_skip >= 5:
                         log.info(f"W{worker_id}: 连续 {consecutive_skip} 次失败，翻页")
                         if goto_next_page(page):
                             current_page += 1
