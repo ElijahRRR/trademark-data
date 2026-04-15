@@ -1,0 +1,7 @@
+design_images/
+raw/
+*.log
+.lark_secret
+venv_lark/
+__pycache__/
+*.pyc

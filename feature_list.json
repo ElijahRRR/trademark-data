@@ -101,5 +101,153 @@
       "确认 UTIL 专利没有提取图片"
     ],
     "passes": true
+  },
+  {
+    "id": 100,
+    "category": "infrastructure",
+    "description": "[飞书集成] Python 飞书 SDK 就绪",
+    "steps": [
+      "venv_lark 目录存在",
+      "lark_oapi 可被 import",
+      "psycopg2 可被 import"
+    ],
+    "passes": true
+  },
+  {
+    "id": 101,
+    "category": "infrastructure",
+    "description": "[飞书集成] 凭证管理模块 lark_config.py",
+    "steps": [
+      "从 ~/.lark-cli/config.json 读取 appId/appSecret",
+      "提供 get_client() 返回已初始化的 lark Client",
+      "常量 SPREADSHEET_TOKEN, SHEET_IDS 定义"
+    ],
+    "passes": true
+  },
+  {
+    "id": 102,
+    "category": "core",
+    "description": "[飞书集成] 飞书 sheets 读取封装 lark_io.read_range",
+    "steps": [
+      "支持分批读取超过 5000 行的大表",
+      "处理超链接单元格 (链接对象) → 提取 text",
+      "返回二维列表"
+    ],
+    "passes": true
+  },
+  {
+    "id": 103,
+    "category": "core",
+    "description": "[飞书集成] 飞书 sheets 写入封装 lark_io.write_range",
+    "steps": [
+      "支持自动扩展行数 (insert_dimension)",
+      "处理超过 5000 行/单次写入限制 (分批)",
+      "支持 clear_sheet 清空旧数据"
+    ],
+    "passes": true
+  },
+  {
+    "id": 104,
+    "category": "core",
+    "description": "[飞书集成] 从飞书读取 Tro案件 数据",
+    "steps": [
+      "调用 read_range 读取 34f9f3 全部数据",
+      "解析 20 列字段 (Date Filed, Case Number, Plaintiff, Brand, Nature of Suit 等)",
+      "正确处理空值",
+      "返回案件字典列表"
+    ],
+    "passes": true
+  },
+  {
+    "id": 105,
+    "category": "core",
+    "description": "[飞书集成] 同步飞书数据到本地 PostgreSQL tro_cases",
+    "steps": [
+      "lark_sync.py 提供 sync_tro_cases_from_lark()",
+      "对 case_number 做 UPSERT (ON CONFLICT)",
+      "重新计算 plaintiff_clean / brand_clean (Step 0 逻辑)",
+      "返回 (新增数, 更新数)"
+    ],
+    "passes": true
+  },
+  {
+    "id": 106,
+    "category": "core",
+    "description": "[飞书集成] 增量检测：仅识别未处理的新 cases",
+    "steps": [
+      "查询 tro_cases LEFT JOIN matched_companies",
+      "找出 matched_companies 中没有的 case_numbers",
+      "返回待处理列表"
+    ],
+    "passes": false
+  },
+  {
+    "id": 107,
+    "category": "core",
+    "description": "[飞书集成] 增量执行 Step 1-4 处理新案件",
+    "steps": [
+      "复用 step2_v2.py 中 step1_dedup/run_step2/run_step3 函数",
+      "仅对新增 plaintiffs/brands 做查询",
+      "复用 collect_brands 收集新公司的品牌"
+    ],
+    "passes": false
+  },
+  {
+    "id": 108,
+    "category": "core",
+    "description": "[飞书集成] 推送 公司概览 到飞书 (含最近一次起诉时间)",
+    "steps": [
+      "查询 matched_companies 聚合数据",
+      "增加 '最近一次起诉时间' 字段 (从 tro_cases.date_filed)",
+      "调用 write_range 写入 ym27aR sheet (~1700 行)",
+      "确认所有数据写入成功"
+    ],
+    "passes": false
+  },
+  {
+    "id": 109,
+    "category": "core",
+    "description": "[飞书集成] 推送 品牌明细 到飞书",
+    "steps": [
+      "查询 company_brand_details",
+      "调用 write_range 写入 6IpYri sheet (~119000 行)",
+      "确认大批量数据写入成功 (分批写入)"
+    ],
+    "passes": false
+  },
+  {
+    "id": 110,
+    "category": "core",
+    "description": "[飞书集成] 推送 未找到清单 到飞书",
+    "steps": [
+      "查询 matched_companies WHERE match_quality='not_found'",
+      "调用 write_range 写入 wynwtK sheet (~2300 行)",
+      "确认所有数据写入成功"
+    ],
+    "passes": false
+  },
+  {
+    "id": 111,
+    "category": "feature",
+    "description": "[飞书集成] 主入口脚本 lark_pipeline.py",
+    "steps": [
+      "命令行参数 --action sync|process|upload|all",
+      "默认 --action all 执行完整流程",
+      "打印每步进度和耗时",
+      "异常时友好报错"
+    ],
+    "passes": false
+  },
+  {
+    "id": 112,
+    "category": "validation",
+    "description": "[飞书集成] 端到端冒烟测试",
+    "steps": [
+      "运行 lark_pipeline.py --action sync",
+      "确认 DB 中 case 数量与飞书一致 (11000)",
+      "运行 lark_pipeline.py --action upload",
+      "在飞书表格上肉眼检查公司概览第一行是 Nike"
+    ],
+    "passes": false
   }
 ]
