@@ -221,18 +221,17 @@ def _write_one_range(client, spreadsheet_token: str, range_str: str, values: Lis
         raise RuntimeError(f"飞书 API 错误 [{range_str}]: [{body.get('code')}] {body.get('msg')}")
 
 
-def ensure_rows(sheet_id: str, required_rows: int,
-                spreadsheet_token: str = SPREADSHEET_TOKEN):
-    """确保 sheet 至少有 required_rows 行，不足则追加 (写操作: 走 lark-cli)"""
-    current = _get_sheet_row_count(sheet_id, spreadsheet_token)
-    if current >= required_rows:
-        return current
-    delta = required_rows - current
+# 单次 dimension_range 追加行上限 (飞书限制 5000)
+MAX_APPEND_ROWS_PER_REQUEST = 5000
+
+
+def _append_rows_once(sheet_id: str, length: int, spreadsheet_token: str):
+    """单次追加 length 行 (<= 5000)"""
     payload = {
         "dimension": {
             "sheetId": sheet_id,
             "majorDimension": "ROWS",
-            "length": delta,
+            "length": length,
         }
     }
     payload_json = json.dumps(payload, ensure_ascii=False)
@@ -254,6 +253,20 @@ def ensure_rows(sheet_id: str, required_rows: int,
     body = json.loads(proc.stdout)
     if body.get("code") != 0:
         raise RuntimeError(f"扩展行数 API 错误: [{body.get('code')}] {body.get('msg')}")
+
+
+def ensure_rows(sheet_id: str, required_rows: int,
+                spreadsheet_token: str = SPREADSHEET_TOKEN):
+    """确保 sheet 至少有 required_rows 行，不足则分批追加 (单次上限 5000)"""
+    current = _get_sheet_row_count(sheet_id, spreadsheet_token)
+    if current >= required_rows:
+        return current
+    delta = required_rows - current
+    # 分批追加 (飞书单次 5000 行上限)
+    while delta > 0:
+        batch = min(delta, MAX_APPEND_ROWS_PER_REQUEST)
+        _append_rows_once(sheet_id, batch, spreadsheet_token)
+        delta -= batch
     return required_rows
 
 

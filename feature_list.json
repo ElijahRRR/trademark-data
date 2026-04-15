@@ -202,7 +202,7 @@
       "调用 write_range 写入 ym27aR sheet (~1700 行)",
       "确认所有数据写入成功"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 109,
@@ -213,7 +213,7 @@
       "调用 write_range 写入 6IpYri sheet (~119000 行)",
       "确认大批量数据写入成功 (分批写入)"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 110,
@@ -224,7 +224,7 @@
       "调用 write_range 写入 wynwtK sheet (~2300 行)",
       "确认所有数据写入成功"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 111,
