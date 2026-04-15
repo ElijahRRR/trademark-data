@@ -1,8 +1,9 @@
 """
 把本地 DB 结果推送到飞书
 - 公司概览 (ym27aR)    : ~1775 行 × 10 列
-- 品牌明细 (6IpYri)    : ~148000 行 × 9 列
-- 未找到清单 (wynwtK)  : ~2299 行 × 7 列
+- 品牌明细 (6IpYri)    : ~126000 行 × 9 列
+- 未找到清单 (wynwtK)  : ~2310 行 × 7 列
+- 黑名单品牌 (sdO3YJ)  : ~20800 行 × 2 列 (公司-品牌对照)
 
 每个 sheet 的流程:
 1. ensure_rows - 不够就扩
@@ -131,6 +132,25 @@ def _fetch_brand_details():
     return out
 
 
+def _fetch_blacklist():
+    """生成黑名单品牌数据: 2 列
+    列: 公司名称 | 品牌名
+    (按 real_company + mark 去重的 company-brand 对照)
+    """
+    conn = psycopg2.connect(DB_CONN)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT real_company, mark_identification
+        FROM company_brand_details
+        WHERE mark_identification IS NOT NULL AND mark_identification != ''
+        ORDER BY real_company, mark_identification
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [[r[0] or "", r[1] or ""] for r in rows]
+
+
 def _fetch_not_found():
     """生成未找到清单数据: 7 列
     列: 案件号 | 原告名 | 品牌名 | 匹配质量 | 起诉类型 | 审核原因 | 品牌=原告
@@ -208,8 +228,13 @@ def upload_not_found():
     return _push("not_found", data, end_col="G")
 
 
+def upload_blacklist():
+    data = _fetch_blacklist()
+    return _push("blacklist", data, end_col="B")
+
+
 def upload_all():
-    """按顺序推送三个 sheet"""
+    """按顺序推送四个 sheet (小的先写, 大的殿后)"""
     print("=" * 60)
     print("飞书数据推送")
     print("=" * 60)
@@ -218,6 +243,8 @@ def upload_all():
     results["company_overview"] = upload_company_overview()
     print()
     results["not_found"] = upload_not_found()
+    print()
+    results["blacklist"] = upload_blacklist()
     print()
     results["brand_details"] = upload_brand_details()
     print()
@@ -239,6 +266,8 @@ if __name__ == "__main__":
             upload_brand_details()
         elif action == "notfound":
             upload_not_found()
+        elif action == "blacklist":
+            upload_blacklist()
         else:
             upload_all()
     else:
