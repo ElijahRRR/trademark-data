@@ -179,7 +179,7 @@
       "找出 matched_companies 中没有的 case_numbers",
       "返回待处理列表"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 107,
@@ -190,7 +190,7 @@
       "仅对新增 plaintiffs/brands 做查询",
       "复用 collect_brands 收集新公司的品牌"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": 108,
