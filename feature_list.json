@@ -248,6 +248,6 @@
       "运行 lark_pipeline.py --action upload",
       "在飞书表格上肉眼检查公司概览第一行是 Nike"
     ],
-    "passes": false
+    "passes": true
   }
 ]
