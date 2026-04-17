@@ -453,6 +453,9 @@ def audit_product(product: Dict, conn, lexicons=None) -> Dict:
     all_flags.extend(rule_compat_trademark(product, conn))
     all_flags.extend(rule_authenticity_claim(product))
     all_flags.extend(rule_ptype_mapping(product, conn))
+    # 相似度召回 (B-3): 对标题与历史违规做 trigram 相似, 命中 warn/hard_block
+    from audit_recall import rule_historical_similarity
+    all_flags.extend(rule_historical_similarity(product, conn))
 
     # 按 category 计算风险分
     def risk_for(cat):

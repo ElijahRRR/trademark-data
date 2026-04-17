@@ -38,8 +38,8 @@ SHEET_TITLES = {
 
 HEADERS = {
     "approve_pool": [
-        "ASIN", "标题", "品牌", "类目路径", "价格", "畅销排名", "原产国",
-        "UPC", "图片链接", "审核时间"
+        "ASIN", "标题", "品牌", "类目路径", "推荐 Walmart ProductType",
+        "价格", "畅销排名", "原产国", "UPC", "图片链接", "审核时间"
     ],
     "rejected": [
         "ASIN", "标题", "品牌", "类目路径", "价格", "拒绝原因汇总",
@@ -47,7 +47,8 @@ HEADERS = {
         "审核时间"
     ],
     "hold_manual": [
-        "ASIN", "标题", "品牌", "类目路径", "价格", "复审建议",
+        "ASIN", "标题", "品牌", "类目路径", "推荐 Walmart PT",
+        "价格", "复审建议",
         "IP风险", "Offensive风险", "Regulatory风险", "总风险",
         "触发规则数", "主要触发规则", "审核时间"
     ],
@@ -168,7 +169,13 @@ def _rows_for_approve(conn, batch_file=None):
         where += " AND pa.batch_file = %s"
         args.append(batch_file)
     cur.execute(f"""
-        SELECT pa.asin, ps.title, ps.brand, ps.category_path, ps.price, ps.bsr,
+        SELECT pa.asin, ps.title, ps.brand, ps.category_path,
+               COALESCE(pa.llm_raw_response->>'suggested_walmart_product_type',
+                        (SELECT walmart_product_type FROM amazon_walmart_category_map m
+                         WHERE m.recommended_amazon_path = ps.category_path
+                            OR m.recommended_amazon_bsr = split_part(ps.category_path, ' > ', -1)
+                         ORDER BY confidence DESC NULLS LAST LIMIT 1)) AS suggested_ptype,
+               ps.price, ps.bsr,
                ps.origin_country, ps.upc, ps.image_urls,
                to_char(pa.audited_at, 'YYYY-MM-DD HH24:MI')
         FROM product_audits pa JOIN products_stage ps ON ps.id = pa.stage_id
@@ -215,7 +222,13 @@ def _rows_for_hold(conn, batch_file=None):
         where += " AND pa.batch_file = %s"
         args.append(batch_file)
     cur.execute(f"""
-        SELECT pa.asin, ps.title, ps.brand, ps.category_path, ps.price,
+        SELECT pa.asin, ps.title, ps.brand, ps.category_path,
+               COALESCE(pa.llm_raw_response->>'suggested_walmart_product_type',
+                        (SELECT walmart_product_type FROM amazon_walmart_category_map m
+                         WHERE m.recommended_amazon_path = ps.category_path
+                            OR m.recommended_amazon_bsr = split_part(ps.category_path, ' > ', -1)
+                         ORDER BY confidence DESC NULLS LAST LIMIT 1)) AS suggested_ptype,
+               ps.price,
                CASE WHEN pa.overall_risk >= 60 THEN '建议拒绝'
                     WHEN pa.overall_risk >= 30 THEN '需 LLM 二审'
                     ELSE '可放行 (低风险)' END,
@@ -294,7 +307,7 @@ def _push(sheet_id: str, data, title=""):
     # 扩容
     ensure_rows(sheet_id, len(data) + 1, spreadsheet_token=AUDIT_SS_TOKEN)
     # 清空旧数据 (保留表头)
-    clear_sheet_data(sheet_id, start_row=2, end_col="M",
+    clear_sheet_data(sheet_id, start_row=2, end_col="N",
                      spreadsheet_token=AUDIT_SS_TOKEN)
     # 写入
     # 把 None → "" 和 Decimal → str
