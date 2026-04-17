@@ -368,6 +368,72 @@ def rule_default_ptype_risk(product: Dict) -> List[Dict]:
     return []
 
 
+# 搬运不可绕过的硬认证 (在 Walmart 映射表的认证字段里命中即拒)
+HARD_CERT_RE = re.compile(
+    r"CPC\b|510\(k\)|MoCRA|\bFCC\s*认证|\bUL\s*认证|\bETL\b|\bEPA\b|\bFinCEN|"
+    r"\bSCCP|联邦专营|独家授权|FinCEN|RED\s*Cert",
+    re.I,
+)
+
+
+def rule_ptype_mapping(product: Dict, conn) -> List[Dict]:
+    """
+    Amazon 类目 → Walmart ProductType 映射 (基于用户提供的 v9 映射表)
+    保守触发策略 (避免大量 warn 堆积):
+    - 匹到硬认证 (CPC/510(k)/MoCRA/FCC/UL/ETL/EPA/FinCEN) → hard_block
+    - 匹到 IP 风险=高 且置信度 ≥ 0.85 → warn (高置信度才标)
+    - 未匹配/软合规 → 不标 flag (交 LLM 判断)
+    """
+    from audit_category_mapping import predict_walmart_ptype
+    cands = predict_walmart_ptype(conn, amazon_path=product.get("category_path"))
+    if not cands:
+        return []
+
+    top = cands[0]
+    flags = []
+    cert = top.get("cert_required") or ""
+    ip_risk = (top.get("ip_risk") or "").strip()
+    conf = top.get("confidence") or 0
+
+    if HARD_CERT_RE.search(cert):
+        flags.append({
+            "flag_type": "rule_hit",
+            "flag_category": "regulatory",
+            "flag_code": "ptype_hard_cert_required",
+            "description": (
+                f'推荐 Walmart PT "{top["walmart_product_type"]}" '
+                f'需硬认证 ({cert[:80]}), 搬运场景无法提供'
+            ),
+            "severity": "hard_block",
+            "evidence": {
+                "walmart_product_type": top["walmart_product_type"],
+                "walmart_category": top["walmart_category"],
+                "cert_required": cert, "ip_risk": ip_risk,
+                "match_level": top["match_level"],
+                "confidence": conf,
+            },
+        })
+    elif ip_risk == "高" and conf >= 0.85:
+        flags.append({
+            "flag_type": "rule_hit",
+            "flag_category": "ip",
+            "flag_code": "ptype_high_ip_risk",
+            "description": (
+                f'推荐 Walmart PT "{top["walmart_product_type"]}" IP 风险高: '
+                f'{(top.get("compliance_notes") or "")[:100]}'
+            ),
+            "severity": "warn",
+            "evidence": {
+                "walmart_product_type": top["walmart_product_type"],
+                "ip_risk": ip_risk,
+                "compliance_notes": top.get("compliance_notes"),
+                "match_level": top["match_level"],
+                "confidence": conf,
+            },
+        })
+    return flags
+
+
 # ==========================================================================
 # 主入口
 # ==========================================================================
@@ -386,8 +452,7 @@ def audit_product(product: Dict, conn, lexicons=None) -> Dict:
     all_flags.extend(rule_ip_keyword(product, lexicons["ip_keywords"]))
     all_flags.extend(rule_compat_trademark(product, conn))
     all_flags.extend(rule_authenticity_claim(product))
-    # rule_default_ptype_risk 暂时去掉: Amazon 采集数据普遍无 "商品类型" 字段, 100% 触发无意义
-    # 真正有意义的防线是映射阶段检查 Walmart ProductType 是否 default
+    all_flags.extend(rule_ptype_mapping(product, conn))
 
     # 按 category 计算风险分
     def risk_for(cat):
