@@ -32,6 +32,26 @@ DB_CONN = "dbname=uspto user=nextderboy"
 # Amazon category path 硬禁关键词 (搬运场景不允许)
 # 所有关键词 lowercase 后在 category_path (全转小写) 里 substring 匹配
 CATEGORY_HARD_KEYWORDS = [
+    # --- 汽配/摩配 类目 (搬运侵权高危) ---
+    ("automotive replacement",  "ip", "auto_aftermarket"),
+    ("automotive body parts",   "ip", "auto_aftermarket"),
+    ("motorcycle parts",        "ip", "motorcycle"),
+    ("atv parts",               "ip", "motorcycle"),
+    ("utv parts",               "ip", "motorcycle"),
+    ("exterior automotive",     "ip", "auto_aftermarket"),
+    ("interior automotive",     "ip", "auto_aftermarket"),
+    ("automotive performance",  "ip", "auto_aftermarket"),
+    ("automotive electronic",   "ip", "auto_aftermarket"),
+    ("automotive air intake",   "ip", "auto_aftermarket"),
+    ("automotive exhaust",      "ip", "auto_aftermarket"),
+    ("automotive suspension",   "ip", "auto_aftermarket"),
+    ("automotive brake",        "ip", "auto_aftermarket"),
+    ("automotive engine",       "ip", "auto_aftermarket"),
+    ("automotive fuel system",  "ip", "auto_aftermarket"),
+    ("automotive lighting",     "ip", "auto_aftermarket"),
+    ("car covers",              "ip", "auto_aftermarket"),
+    ("truck bed",               "ip", "auto_aftermarket"),
+    ("tonneau cover",           "ip", "auto_aftermarket"),
     # --- 武器类 ---
     ("firearm",       "regulatory", "firearm"),
     ("ammunition",    "regulatory", "firearm"),
@@ -180,12 +200,18 @@ AUTHENTICITY_RE = re.compile(
 
 # IP 关键词的歧义词集合 (hard_block → warn 降级)
 IP_AMBIGUOUS_WORDS = {
-    "AMAZON",   # 平台名, 描述中常见 "amazon.com" / "available on amazon"
-    "SWITCH",   # 普通动词 "switch on/off"
+    "AMAZON",   # 平台名, 描述中常见 "amazon.com"
+    "SWITCH",   # 普通动词
     "APPLE",    # 水果/常用词
     "PIXEL",    # 图像学常用词
-    "FIRE TV",  # 组合词但 Fire 本身常用
+    "FIRE TV",  # 组合词
     "JORDAN",   # 人名/地名
+    "300",      # 数字
+    "MINI",     # 过于常用
+    "BENZ",     # 也是常见中文音译但英文文本 rare
+    "NINJA",    # 厨电品牌冲突
+    "RAM",      # 动物/硬件
+    "POLARIS",  # 星星名
 }
 
 

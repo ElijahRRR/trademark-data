@@ -337,18 +337,51 @@ TECH_BRANDS = [
     "Intel", "AMD", "NVIDIA", "Qualcomm",
 ]
 
-# 汽车 / 摩托车品牌
+# 汽车 / 摩托车品牌 (搬运场景汽配侵权严重, 一律 hard_block)
 AUTO_BRANDS = [
-    "Ford", "Chevrolet", "Chevy", "Toyota", "Honda", "Nissan",
-    "Mazda", "Subaru", "Hyundai", "Kia", "Lexus", "Infiniti", "Acura",
-    "BMW", "Mercedes-Benz", "Mercedes", "Audi", "Porsche", "Volkswagen", "VW",
-    "Volvo", "Land Rover", "Range Rover", "Jaguar", "Mini Cooper",
-    "Jeep", "Dodge", "Chrysler", "Ram", "GMC", "Cadillac", "Buick", "Lincoln",
-    "Tesla", "Rivian", "Lucid",
+    # --- 日系 ---
+    "Toyota", "Camry", "Corolla", "RAV4", "Tacoma", "Tundra", "Highlander",
+    "4Runner", "Prius", "Sienna",
+    "Honda", "Civic", "Accord", "CR-V", "CRV", "Pilot", "Odyssey", "Ridgeline",
+    "Nissan", "Altima", "Sentra", "Rogue", "Pathfinder", "Frontier", "Titan",
+    "Mazda", "Mazda3", "CX-5", "CX-9", "MX-5", "Miata",
+    "Subaru", "Outback", "Forester", "Impreza", "WRX", "Crosstrek",
+    "Hyundai", "Elantra", "Sonata", "Tucson", "Santa Fe",
+    "Kia", "Sorento", "Sportage", "Telluride",
+    "Lexus", "Infiniti", "Acura", "Genesis",
+    # --- 美系 ---
+    "Ford", "F-150", "F150", "F-250", "F250", "Mustang", "Explorer", "Escape",
+    "Ranger", "Bronco", "Edge", "Expedition", "Super Duty",
+    "Chevrolet", "Chevy", "Silverado", "Equinox", "Traverse", "Tahoe", "Suburban",
+    "Camaro", "Corvette", "Colorado", "Impala", "Malibu", "Blazer",
+    "GMC", "Sierra", "Yukon", "Canyon", "Acadia",
+    "Jeep", "Wrangler", "Cherokee", "Grand Cherokee", "Compass", "Renegade", "Gladiator",
+    "Dodge", "RAM", "Ram 1500", "Charger", "Challenger", "Durango",
+    "Chrysler", "Pacifica", "300",
+    "Cadillac", "Escalade", "CTS", "ATS",
+    "Buick", "Lincoln", "Navigator",
+    # --- 欧系 ---
+    "BMW", "BMW M3", "BMW M5", "X3", "X5", "X7",
+    "Mercedes-Benz", "Mercedes", "Benz", "E-Class", "S-Class", "GLC", "GLE", "G-Wagon",
+    "Audi", "A3", "A4", "A6", "Q5", "Q7",
+    "Porsche", "911", "Cayenne", "Macan", "Panamera",
+    "Volkswagen", "VW", "Jetta", "Passat", "Tiguan", "Atlas", "Golf",
+    "Volvo", "XC90", "XC60",
+    "Land Rover", "Range Rover", "Defender",
+    "Jaguar", "Mini Cooper", "MINI",
+    # --- 电动车 / 豪车 ---
+    "Tesla", "Model 3", "Model S", "Model X", "Model Y", "Cybertruck",
+    "Rivian", "Lucid",
     "Lamborghini", "Ferrari", "Bugatti", "McLaren", "Maserati",
     "Rolls-Royce", "Rolls Royce", "Bentley", "Maybach", "Aston Martin",
-    "Harley-Davidson", "Harley", "Indian Motorcycle",
-    "Ducati", "Kawasaki", "Yamaha", "Suzuki", "Triumph",
+    # --- 摩托车 ---
+    "Harley-Davidson", "Harley Davidson", "Harley",
+    "Indian Motorcycle", "Polaris",
+    "Ducati", "Kawasaki", "Ninja", "Yamaha Motor", "Suzuki", "Triumph Motorcycle",
+    "KTM", "BMW Motorrad", "Moto Guzzi", "Aprilia",
+    # --- 商用/卡车/大皮卡 ---
+    "Peterbilt", "Kenworth", "Freightliner", "Volvo Truck", "Mack Trucks",
+    "Caterpillar", "John Deere", "Kubota", "Case IH",
 ]
 
 # 迪士尼 / 卡通 / 动漫 / 游戏 IP
@@ -538,7 +571,8 @@ def build_ip_trigger_terms(conn):
     for brand in TECH_BRANDS:
         values.append((brand, "keyword", "tech_brand", "hard_block", "科技品牌"))
     for brand in AUTO_BRANDS:
-        values.append((brand, "keyword", "auto_brand", "warn", "汽车品牌 (兼容词部分合法)"))
+        # 汽配搬运场景侵权严重, 升为 hard_block
+        values.append((brand, "keyword", "auto_brand", "hard_block", "汽车/摩托车品牌/车型 (搬运场景硬拒)"))
     for ip in CARTOON_IPS:
         values.append((ip, "keyword", "cartoon_ip", "hard_block", "卡通/电影/动漫/游戏 IP"))
     for league in SPORTS_LEAGUES:
