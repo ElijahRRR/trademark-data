@@ -369,6 +369,132 @@ def rule_ip_keyword(product: Dict, ip_keyword_terms) -> List[Dict]:
 
 
 _COMPAT_CACHE: Dict[str, List[Dict]] = {}  # 候选品牌名 → 撞库结果 (批量共享)
+_TRO_BRAND_SET = None  # 延迟加载的 TRO 品牌集合 (upper case)
+_TRO_BRAND_RE = None   # 预编译的多品牌 regex
+
+
+def _load_tro_brands(conn):
+    """
+    一次性加载 TRO 品牌名
+    策略: 只保留多词品牌 (含空格/连字符) — 单词品牌歧义大 (常见英文词被注册), 交 USPTO 规则处理
+    """
+    global _TRO_BRAND_SET, _TRO_BRAND_RE
+    if _TRO_BRAND_SET is not None:
+        return len(_TRO_BRAND_SET)
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT DISTINCT mark_identification
+        FROM company_brand_details
+        WHERE mark_identification IS NOT NULL
+          AND length(mark_identification) >= 5
+          AND (mark_identification LIKE '% %' OR mark_identification LIKE '%-%')
+          AND mark_identification !~ '^[0-9]+$'
+    """)
+    brands = [r[0].strip().upper() for r in cur.fetchall() if r[0]]
+    cur.close()
+    # 排除极泛用的多词短语
+    generic_multiword = {
+        "HOME OFFICE", "HOME GARDEN", "HOME KITCHEN", "OFFICE SUPPLIES",
+        "NEW DESIGN", "ORIGINAL DESIGN", "CLASSIC DESIGN", "MODERN DESIGN",
+        "BEST CHOICE", "GOOD CHOICE", "PRO TOOL", "SMART HOME",
+        "LIFE STYLE", "KITCHEN TOOL", "KITCHEN TOOLS", "HOME DECOR",
+        "HAPPY HOME", "NATURAL BEAUTY", "PURE WATER", "FRESH START",
+    }
+    _TRO_BRAND_SET = {b for b in brands if b not in generic_multiword}
+    _TRO_BRAND_RE = None
+    return len(_TRO_BRAND_SET)
+
+
+def rule_tro_brand_match(product: Dict, conn) -> List[Dict]:
+    """
+    TRO 黑名单 36K 品牌分层匹配
+    - product.brand 字段命中 → hard_block (冒用, 除非=自营品牌)
+    - 标题首 3 个大写词 = TRO 品牌 → hard_block (典型冒用模式)
+    - 描述配合兼容词 "for X / compatible with X" + X ∈ TRO → warn (兼容件场景)
+    - 标题/描述中段普通提及 → warn
+    """
+    _load_tro_brands(conn)
+    if not _TRO_BRAND_SET:
+        return []
+
+    brand_field = (product.get("brand") or "").strip().upper()
+    title = product.get("title") or ""
+    bullets = product.get("bullet_points") or ""
+    long_desc = product.get("long_description") or ""
+
+    flags = []
+    # 自营品牌白名单 (产品声称的 brand 如果不是 unbranded/generic, 且在 TRO 里出现, 视为自营)
+    claim_is_own = brand_field and brand_field not in ("UNBRANDED", "GENERIC", "NONE", "")
+    own_brand = brand_field if claim_is_own else None
+
+    # 1. brand 字段命中 TRO
+    if brand_field and brand_field in _TRO_BRAND_SET and not claim_is_own:
+        # 只有 brand=unbranded/空时才可能"冒用" 注: 此分支实际上只在边界情况触发
+        flags.append({
+            "flag_type": "rule_hit",
+            "flag_category": "ip",
+            "flag_code": "tro_brand_in_brand_field",
+            "description": f'product.brand "{brand_field}" 命中 TRO 黑名单 (冒用)',
+            "severity": "hard_block",
+            "evidence": {"brand": brand_field, "source": "brand_field"},
+        })
+
+    # 2. 标题首 3 词扫 (只看大写开头词组)
+    import re as _re
+    # 泛用开头词 (the/an/your/my/best 等) 需跳过, 避免 "THE ORIGINAL" 误伤
+    HEAD_STOPWORDS = {"THE", "A", "AN", "YOUR", "MY", "OUR", "HIS", "HER",
+                      "BEST", "NEW", "ORIGINAL", "100%", "USA", "GENUINE"}
+    title_clean = title.strip()
+    head_tokens = title_clean.split()[:4]
+    for n in (3, 2, 1):
+        if n > len(head_tokens):
+            continue
+        phrase = " ".join(head_tokens[:n]).upper().rstrip(",.:;")
+        phrase = _re.sub(r"^\d+[A-Z]*\s*", "", phrase)  # 去开头数字
+        if len(phrase) < 5:
+            continue
+        # 跳过以泛用词开头的短语
+        first_word = phrase.split()[0] if phrase.split() else ""
+        if first_word in HEAD_STOPWORDS:
+            continue
+        if phrase in _TRO_BRAND_SET:
+            # 自营品牌豁免: phrase == own_brand 或 own_brand.startswith(phrase)
+            if own_brand and (phrase == own_brand or own_brand.startswith(phrase + " ")):
+                continue
+            flags.append({
+                "flag_type": "rule_hit",
+                "flag_category": "ip",
+                "flag_code": "tro_brand_title_head",
+                "description": f'标题开头 "{phrase}" 命中 TRO 黑名单 (典型冒用模式)',
+                "severity": "hard_block",
+                "evidence": {"match": phrase, "source": "title_head"},
+            })
+            break
+
+    # 3. 描述兼容词 for/compatible with/fits X, X 命中 TRO
+    text = _full_text(product)
+    for rx in COMPAT_RE:
+        for m in rx.finditer(text):
+            cand = m.group(1).strip().rstrip(",.:;").upper()
+            # 尝试完整 cand 或前 2 词
+            for phrase in (cand, " ".join(cand.split()[:2]), " ".join(cand.split()[:1])):
+                if len(phrase) < 5:
+                    continue
+                if phrase in _TRO_BRAND_SET and phrase != own_brand:
+                    flags.append({
+                        "flag_type": "rule_hit",
+                        "flag_category": "ip",
+                        "flag_code": "tro_brand_compat_word",
+                        "description": f'描述 "for/compatible with {phrase}" 命中 TRO 黑名单',
+                        "severity": "warn",
+                        "evidence": {"match": phrase, "source": "compat_word"},
+                    })
+                    break
+            break  # 每个 match 只检一次
+
+    # rule 4 (标题中段扫描) 已移除 — TRO 多词短语泛用词过多 (MADE FOR / HAPPY BIRTHDAY / ENERGY EFFICIENCY 等被注册)
+    # 依赖更精准的 3 条路径: brand 字段 / 标题首词 / 兼容词
+    return flags
 
 
 # 兼容词场景中极常见但通常不构成侵权的词 (USPTO 中可能有注册但都是泛用词)
@@ -581,6 +707,7 @@ def audit_product(product: Dict, conn, lexicons=None) -> Dict:
     all_flags.extend(rule_compat_trademark(product, conn))
     all_flags.extend(rule_authenticity_claim(product))
     all_flags.extend(rule_ptype_mapping(product, conn))
+    all_flags.extend(rule_tro_brand_match(product, conn))
     # 相似度召回 (B-3): 对标题与历史违规做 trigram 相似, 命中 warn/hard_block
     # 永远排除自身 ASIN (正常采集场景 ASIN 不在 history 里无影响; 回测场景避免自撞作弊)
     from audit_recall import rule_historical_similarity
