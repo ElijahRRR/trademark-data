@@ -175,12 +175,13 @@ def pick_ground_truth_positives(limit=500):
     return [{"asin": r[0], "reason": r[1], "all_reasons": r[3]} for r in rows]
 
 
-def evaluate_recall(batch_name="backtest_history", verbose=True):
-    """对回填后的 products_stage 跑 audit_rules, 统计"""
+def evaluate_recall_impl(batch_name="backtest_history", verbose=True, skip_audit=False):
+    """对回填后的 products_stage 跑 audit_rules (可选), 然后统计"""
     from audit_rules import run_batch
-    if verbose:
-        print("\n跑 L1 规则...")
-    run_batch(batch_name, verbose=verbose)
+    if not skip_audit:
+        if verbose:
+            print("\n跑 L1 规则...")
+        run_batch(batch_name, verbose=verbose)
 
     # 对比 verdict vs ground truth (ground truth 都是 deleted=TRUE, 预期应该被 reject/hold)
     conn = psycopg2.connect(DB_CONN)
@@ -251,6 +252,9 @@ def main():
     p.add_argument("--batch", default="backtest_history")
     p.add_argument("--disable-asin-rule", action="store_true",
                    help="禁用 rule_asin_hit 后再跑一次 (测其他规则单独能力)")
+    p.add_argument("--with-llm", action="store_true",
+                   help="叠加 LLM 二审, 测 L1+L2 全系统漏网率 (消耗 API 额度)")
+    p.add_argument("--llm-workers", type=int, default=10)
     args = p.parse_args()
 
     if not args.skip_backfill:
@@ -266,7 +270,7 @@ def main():
             print(f"  Scraper 无数据 (跳过): {len(miss)}")
 
     print(f"\n{'='*60}\n步骤 3: 跑 L1 规则并评估\n{'='*60}")
-    evaluate_recall(args.batch)
+    evaluate_recall_impl(args.batch)
 
     # 额外: 禁用 ASIN 直击后的公平回测
     if args.disable_asin_rule:
@@ -275,9 +279,27 @@ def main():
         orig = audit_rules.rule_asin_hit
         audit_rules.rule_asin_hit = lambda p, c: []
         try:
-            evaluate_recall(args.batch)
+            evaluate_recall_impl(args.batch)
         finally:
             audit_rules.rule_asin_hit = orig
+
+    # 进阶: 在公平回测基础上叠加 LLM 二审, 看 L1+L2 全系统漏网率
+    if args.with_llm:
+        print(f"\n{'='*60}\n步骤 5: L1 (无 ASIN 直击) + LLM 二审 全系统回测\n{'='*60}")
+        import audit_rules
+        orig = audit_rules.rule_asin_hit
+        audit_rules.rule_asin_hit = lambda p, c: []
+        try:
+            # 先跑 L1
+            from audit_rules import run_batch
+            run_batch(args.batch, verbose=False)
+            # 再跑 LLM 对 hold_manual
+            from audit_llm import run_llm_on_batch
+            run_llm_on_batch(args.batch, max_workers=args.llm_workers, verbose=False)
+        finally:
+            audit_rules.rule_asin_hit = orig
+        # 最终统计
+        evaluate_recall_impl(args.batch, skip_audit=True)
 
 
 if __name__ == "__main__":
