@@ -15,6 +15,7 @@ C-2 LLM 文本审核
 - 输出强结构化 JSON
 """
 import argparse
+import asyncio
 import concurrent.futures as cf
 import json
 import time
@@ -23,7 +24,7 @@ from typing import Dict, List
 import psycopg2
 from psycopg2.extras import Json
 
-from audit_llm_adapter import chat_json, model_text
+from audit_llm_adapter import chat_json, chat_json_async, model_text
 
 DB_CONN = "dbname=uspto user=nextderboy"
 
@@ -70,10 +71,13 @@ SYSTEM_PROMPT = """你是沃尔玛 Marketplace 合规审核专家, 按照沃尔�
   "reasoning": "..."            // 中文总结 1-2 句
 }
 
-判定阈值:
-- 任一维度 >= 70 且有明确证据 → reject
-- 30-70 → hold (需人工或更多信息)
-- 全部 < 30 → approve
+【判定阈值 — 保守优先】
+对搬运场景 (Amazon→Walmart) 宁可误伤多 hold 也别漏放行:
+- 任一维度 >= 55 且有明确证据 → reject
+- 任一维度 >= 20 → hold (任何灰区都 hold, 交人工/视觉)
+- 全部 < 20 → approve (仅当完全看不出风险)
+
+即 "approve" 门槛必须极高. 有任何蛛丝马迹就 hold, 不要轻易 approve.
 """
 
 
@@ -217,40 +221,106 @@ def _build_user_prompt(product: Dict, l1_flags: List[str]) -> str:
     return "\n".join(parts)
 
 
-def audit_product_llm(product: Dict, l1_flags: List[str], model=None) -> Dict:
-    """对一条产品调 LLM 做三维风险打分"""
-    user = _build_user_prompt(product, l1_flags)
-    try:
-        result = chat_json(SYSTEM_PROMPT, user, model=model, max_tokens=1500)
-    except Exception as e:
-        return {"_error": str(e), "final_verdict": "hold"}
-    # 默认值兜底
+def _postprocess_llm(result: Dict) -> Dict:
     for k in ("ip_risk", "offensive_risk", "regulatory_risk", "counterfeit_risk"):
         v = result.get(k)
         if not isinstance(v, (int, float)):
             result[k] = 30
         else:
             result[k] = max(0, min(100, int(v)))
-    if result.get("final_verdict") not in ("approve", "hold", "reject"):
-        # 按最高分推断
-        maxr = max(result[k] for k in ("ip_risk", "offensive_risk", "regulatory_risk", "counterfeit_risk"))
-        result["final_verdict"] = "reject" if maxr >= 70 else ("hold" if maxr >= 30 else "approve")
+    maxr = max(result[k] for k in ("ip_risk", "offensive_risk", "regulatory_risk", "counterfeit_risk"))
+    # 服务器端兜底也收紧
+    server_verdict = result.get("final_verdict")
+    if server_verdict not in ("approve", "hold", "reject"):
+        server_verdict = None
+    # 若 max >= 20 则至少 hold, 不允许 approve
+    if server_verdict == "approve" and maxr >= 20:
+        server_verdict = "hold"
+    if server_verdict is None:
+        server_verdict = "reject" if maxr >= 55 else ("hold" if maxr >= 20 else "approve")
+    result["final_verdict"] = server_verdict
     return result
+
+
+def audit_product_llm(product: Dict, l1_flags: List[str], model=None) -> Dict:
+    """同步版本 (单条, 兼容旧调用)"""
+    user = _build_user_prompt(product, l1_flags)
+    try:
+        result = chat_json(SYSTEM_PROMPT, user, model=model, max_tokens=1500)
+    except Exception as e:
+        return {"_error": str(e), "final_verdict": "hold"}
+    return _postprocess_llm(result)
+
+
+async def audit_product_llm_async(product: Dict, l1_flags: List[str], model=None) -> Dict:
+    """异步版本 (高并发用)"""
+    user = _build_user_prompt(product, l1_flags)
+    try:
+        result = await chat_json_async(SYSTEM_PROMPT, user, model=model, max_tokens=1500)
+    except Exception as e:
+        return {"_error": str(e), "final_verdict": "hold"}
+    return _postprocess_llm(result)
 
 
 # ==========================================================================
 # 批量跑 hold_manual 的产品升级审核
 # ==========================================================================
 
+async def _run_llm_async(rows, cols, flags_map, concurrency=100, verbose=True):
+    """asyncio.gather 跑全部, semaphore 限并发 (IO 密集, 无需多线程)"""
+    sem = asyncio.Semaphore(concurrency)
+    updates = []
+    counts = {"approve": 0, "hold": 0, "reject": 0, "error": 0}
+    done = [0]
+    t0 = time.time()
+
+    async def one(row):
+        async with sem:
+            d = dict(zip(cols, row))
+            flags = flags_map.get(d["id"], [])
+            r = await audit_product_llm_async(d, flags)
+            if "_error" in r:
+                counts["error"] += 1
+            else:
+                nv = r.get("final_verdict", "hold")
+                counts[nv] = counts.get(nv, 0) + 1
+            done[0] += 1
+            if verbose and done[0] % 100 == 0:
+                elapsed = time.time() - t0
+                rate = done[0] / max(elapsed, 0.001)
+                print(f"  进度 {done[0]}/{len(rows)} ({rate:.1f}/s)", flush=True)
+            return d, r
+
+    results = await asyncio.gather(*(one(r) for r in rows))
+    for d, r in results:
+        llm_verdict = r.get("final_verdict", "hold")
+        mapped_verdict = "hold_manual" if llm_verdict == "hold" else llm_verdict
+        updates.append((
+            mapped_verdict,
+            r.get("ip_risk"), r.get("offensive_risk"),
+            r.get("regulatory_risk"), r.get("counterfeit_risk"),
+            max(r.get("ip_risk") or 0, r.get("offensive_risk") or 0,
+                r.get("regulatory_risk") or 0, r.get("counterfeit_risk") or 0),
+            ((r.get("reasoning") or "") + " | " + "; ".join(r.get("key_issues") or []))[:500],
+            Json(r),
+            d["id"],
+        ))
+    return updates, counts, time.time() - t0
+
+
 def run_llm_on_batch(batch_file: str, verdict_filter=("hold_manual",),
-                     max_workers=4, limit=None, verbose=True):
+                     concurrency=100, limit=None, verbose=True,
+                     # 兼容旧参数
+                     max_workers=None):
     """
-    把指定 batch 中 verdict in filter 的产品送 LLM 二审
-    更新 product_audits 的 l2_triggered + llm_raw_response, 并可调整 verdict
+    对 batch 中 verdict in filter 的产品送 LLM 二审
+    异步实现, 默认 100 并发 (httpx 连接池 200)
     """
+    if max_workers is not None and concurrency == 100:
+        concurrency = max(concurrency, max_workers * 10)
+
     conn = psycopg2.connect(DB_CONN)
     cur = conn.cursor()
-    # 拉取待二审产品 + L1 flags
     cur.execute("""
         SELECT pa.id, pa.asin, pa.stage_id, pa.verdict,
                ps.title, ps.brand, ps.category_path, ps.price,
@@ -268,58 +338,29 @@ def run_llm_on_batch(batch_file: str, verdict_filter=("hold_manual",),
         rows = rows[:limit]
 
     if verbose:
-        print(f"待 LLM 审核: {len(rows)} 产品")
+        print(f"待 LLM 审核: {len(rows)} 产品 (concurrency={concurrency})")
 
-    # 取 audit_flags
-    def fetch_flags(audit_id):
-        cur2 = conn.cursor()
-        cur2.execute("""
-            SELECT flag_code, description, severity
-            FROM audit_flags WHERE audit_id = %s
-            ORDER BY CASE severity WHEN 'hard_block' THEN 1 WHEN 'warn' THEN 2 ELSE 3 END
-            LIMIT 8
-        """, (audit_id,))
-        flag_rows = cur2.fetchall()
-        cur2.close()
-        return [f"{fc}({sv}): {desc}" for fc, desc, sv in flag_rows]
+    # 一次性预取所有 audit_flags (避免 N+1)
+    audit_ids = [r[0] for r in rows]
+    flags_map = {}
+    if audit_ids:
+        cur.execute("""
+            SELECT audit_id, flag_code, description, severity
+            FROM audit_flags
+            WHERE audit_id = ANY(%s)
+            ORDER BY audit_id, CASE severity
+                WHEN 'hard_block' THEN 1 WHEN 'warn' THEN 2 ELSE 3 END
+        """, (audit_ids,))
+        for aid, fc, desc, sv in cur.fetchall():
+            flags_map.setdefault(aid, []).append(f"{fc}({sv}): {desc}")
+    cur.close()
 
-    t0 = time.time()
+    # 跑异步
+    updates, counts, elapsed = asyncio.run(
+        _run_llm_async(rows, cols, flags_map, concurrency=concurrency, verbose=verbose)
+    )
 
-    def worker(row):
-        d = dict(zip(cols, row))
-        flags = fetch_flags(d["id"])
-        try:
-            r = audit_product_llm(d, flags)
-            return d, flags, r
-        except Exception as e:
-            return d, flags, {"_error": str(e)}
-
-    updates = []
-    new_verdicts = {"approve": 0, "hold": 0, "reject": 0, "error": 0}
-    with cf.ThreadPoolExecutor(max_workers=max_workers) as ex:
-        for d, flags, r in ex.map(worker, rows):
-            if "_error" in r:
-                new_verdicts["error"] += 1
-            else:
-                nv = r.get("final_verdict", "hold")
-                new_verdicts[nv] = new_verdicts.get(nv, 0) + 1
-
-            llm_verdict = r.get("final_verdict", "hold")
-            # 映射 LLM 输出到 product_audits verdict: approve / hold_manual / reject
-            mapped_verdict = "hold_manual" if llm_verdict == "hold" else llm_verdict
-            updates.append((
-                mapped_verdict,
-                r.get("ip_risk"), r.get("offensive_risk"),
-                r.get("regulatory_risk"), r.get("counterfeit_risk"),
-                max(
-                    r.get("ip_risk") or 0, r.get("offensive_risk") or 0,
-                    r.get("regulatory_risk") or 0, r.get("counterfeit_risk") or 0,
-                ),
-                ((r.get("reasoning") or "") + " | " + "; ".join(r.get("key_issues") or []))[:500],
-                Json(r),
-                d["id"],
-            ))
-
+    # 批量更新
     cur2 = conn.cursor()
     cur2.executemany("""
         UPDATE product_audits SET
@@ -332,26 +373,26 @@ def run_llm_on_batch(batch_file: str, verdict_filter=("hold_manual",),
     """, updates)
     conn.commit()
     cur2.close()
-    cur.close()
     conn.close()
 
-    elapsed = time.time() - t0
     if verbose:
-        print(f"LLM 审核完成: {len(updates)} 产品, 耗时 {elapsed:.1f}s (avg {elapsed/max(1,len(updates)):.2f}s/product)")
+        print(f"LLM 审核完成: {len(updates)} 产品, 耗时 {elapsed:.1f}s "
+              f"(avg {elapsed/max(1,len(updates)):.2f}s, {len(updates)/max(elapsed,0.001):.1f}/s)")
         print(f"LLM verdict 分布:")
-        for k, v in new_verdicts.items():
+        for k, v in counts.items():
             print(f"  {k}: {v}")
-    return new_verdicts
+    return counts
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--batch", required=True)
     p.add_argument("--limit", type=int, help="限制审核数量 (抽样)")
-    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--concurrency", type=int, default=100,
+                   help="异步并发数 (默认 100, httpx 连接池 200)")
     args = p.parse_args()
 
-    run_llm_on_batch(args.batch, limit=args.limit, max_workers=args.workers)
+    run_llm_on_batch(args.batch, limit=args.limit, concurrency=args.concurrency)
 
 
 if __name__ == "__main__":

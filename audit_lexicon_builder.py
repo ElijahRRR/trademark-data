@@ -25,19 +25,34 @@ OFFENSIVE_SEEDS = {
     "religion": [  # 宗教符号/冒犯
         ("en", "swastika", "hard_block"),
         ("en", "nazi", "hard_block"),
+        ("en", "hitler", "hard_block"),
         ("en", "ss bolts", "warn"),
         ("en", "blessed by allah", "warn"),
         ("en", "jesus christ", "warn"),
         ("en", "crucifix", "warn"),
+        ("en", "rosary", "warn"),
+        ("en", "prayer beads", "warn"),
         ("en", "satan", "warn"),
+        ("en", "satanic", "warn"),
         ("en", "devil", "warn"),
+        ("en", "demonic", "warn"),
         ("en", "pentagram", "warn"),
+        ("en", "upside down cross", "warn"),
         ("en", "church of satan", "hard_block"),
+        ("en", "ouija", "warn"),
+        ("en", "occult", "warn"),
+        ("en", "tarot", "warn"),
+        ("en", "voodoo", "warn"),
+        ("en", "wiccan", "warn"),
+        ("en", "mecca", "warn"),
+        ("en", "prayer rug", "warn"),
         ("zh", "纳粹", "hard_block"),
         ("zh", "卍", "warn"),
         ("zh", "佛像", "warn"),
+        ("zh", "菩萨", "warn"),
         ("zh", "圣经", "warn"),
         ("zh", "古兰经", "warn"),
+        ("zh", "十字架", "warn"),
     ],
     "race": [  # 种族/肤色/仇恨
         ("en", "white power", "hard_block"),
@@ -73,68 +88,192 @@ OFFENSIVE_SEEDS = {
     "sexual": [  # 性暗示/色情
         ("en", "sex toy", "hard_block"),
         ("en", "dildo", "hard_block"),
-        ("en", "vibrator", "warn"),  # 某些按摩器合法
+        ("en", "anal", "hard_block"),
+        ("en", "butt plug", "hard_block"),
+        ("en", "penis", "hard_block"),
+        ("en", "vagina", "hard_block"),
+        ("en", "vibrator", "warn"),
         ("en", "adult content", "hard_block"),
+        ("en", "adult novelty", "hard_block"),
         ("en", "xxx", "warn"),
         ("en", "porn", "hard_block"),
+        ("en", "pornography", "hard_block"),
+        ("en", "pornographic", "hard_block"),
         ("en", "fetish", "warn"),
         ("en", "bondage", "warn"),
+        ("en", "bdsm", "warn"),
+        ("en", "kink", "warn"),
         ("en", "nude", "warn"),
+        ("en", "naked", "warn"),
         ("en", "erotic", "warn"),
         ("en", "lingerie", "warn"),
         ("en", "intimate", "warn"),
+        ("en", "g-spot", "hard_block"),
+        ("en", "prostate massager", "hard_block"),
+        ("en", "couples toy", "warn"),
+        ("en", "orgasm", "hard_block"),
+        ("en", "sensual", "warn"),
     ],
     "violence": [  # 暴力/武器
-        ("en", "gun", "hard_block"),
-        ("en", "pistol", "hard_block"),
+        ("en", "gun", "warn"),  # 有工具上下文豁免, 不硬拒
+        ("en", "pistol", "warn"),
         ("en", "rifle", "hard_block"),
+        ("en", "shotgun", "hard_block"),
+        ("en", "assault", "warn"),
+        ("en", "firearm", "hard_block"),
         ("en", "ammunition", "hard_block"),
+        ("en", "ammo", "hard_block"),
         ("en", "bullet", "warn"),
+        ("en", "cartridge", "warn"),
+        ("en", "magazine clip", "warn"),
         ("en", "silencer", "hard_block"),
+        ("en", "suppressor", "warn"),
         ("en", "sniper", "warn"),
         ("en", "killer", "warn"),
         ("en", "murder", "warn"),
-        ("en", "self defense", "hard_block"),  # 沃尔玛严格
+        ("en", "suicide", "warn"),
+        ("en", "self harm", "warn"),
+        ("en", "cutting", "warn"),
+        ("en", "self defense", "hard_block"),
         ("en", "self-defense", "hard_block"),
         ("en", "martial arts", "warn"),
         ("en", "brass knuckles", "hard_block"),
         ("en", "throwing knife", "hard_block"),
+        ("en", "dagger", "hard_block"),
+        ("en", "bayonet", "hard_block"),
+        ("en", "machete", "hard_block"),
+        ("en", "katana", "warn"),
+        ("en", "samurai sword", "warn"),
+        ("en", "butterfly knife", "hard_block"),
+        ("en", "karambit", "hard_block"),
+        ("en", "nunchuck", "hard_block"),
+        ("en", "nunchaku", "hard_block"),
+        ("en", "tomahawk", "warn"),
+        ("en", "hatchet", "warn"),
         ("en", "ninja", "warn"),
         ("en", "combat", "warn"),
+        ("en", "tactical knife", "hard_block"),
+        ("en", "crossbow", "hard_block"),
+        ("en", "compound bow", "warn"),
+        ("en", "blowgun", "hard_block"),
+        ("en", "slingshot", "warn"),
+        ("en", "catapult", "warn"),
         ("zh", "自卫", "warn"),
         ("zh", "武器", "hard_block"),
         ("zh", "刀具", "warn"),
     ],
-    "drug": [  # 毒品/药物
+    "drug": [  # 毒品/药物/管制药
         ("en", "cbd", "hard_block"),
         ("en", "cannabis", "hard_block"),
         ("en", "marijuana", "hard_block"),
         ("en", "weed", "warn"),
         ("en", "thc", "hard_block"),
+        ("en", "cbg", "warn"),
+        ("en", "cbn", "warn"),
+        ("en", "delta 8", "hard_block"),
+        ("en", "delta-8", "hard_block"),
         ("en", "kratom", "hard_block"),
         ("en", "kava", "warn"),
         ("en", "salvia", "warn"),
         ("en", "opium", "hard_block"),
+        ("en", "poppy seed", "warn"),
         ("en", "heroin", "hard_block"),
         ("en", "cocaine", "hard_block"),
         ("en", "meth", "warn"),
+        ("en", "methamphetamine", "hard_block"),
         ("en", "psychedelic", "warn"),
-        ("en", "hemp", "warn"),  # 某些合法
+        ("en", "lsd", "hard_block"),
+        ("en", "mdma", "hard_block"),
+        ("en", "mushroom", "warn"),
+        ("en", "psilocybin", "hard_block"),
+        ("en", "hemp", "warn"),
         ("en", "hgh", "hard_block"),
         ("en", "steroid", "warn"),
+        ("en", "anabolic", "warn"),
+        ("en", "testosterone", "warn"),
+        ("en", "sarm", "warn"),
         ("en", "bong", "warn"),
-        ("en", "pipe", "warn"),  # 烟具
+        ("en", "pipe", "warn"),
+        ("en", "dab rig", "warn"),
+        ("en", "vape pen", "warn"),
+        ("en", "vape mod", "warn"),
+        ("en", "e-liquid", "warn"),
+        ("en", "nicotine", "warn"),
         ("en", "rolling paper", "warn"),
         ("en", "herbal incense", "warn"),
+        ("en", "research chemical", "hard_block"),
+        ("en", "nootropic", "warn"),
+        ("en", "benzo", "warn"),
+        ("en", "xanax", "hard_block"),
+        ("en", "adderall", "hard_block"),
+        ("en", "oxycontin", "hard_block"),
+        ("en", "fentanyl", "hard_block"),
+        ("en", "codeine", "hard_block"),
     ],
-    "weapon_false_positive": [  # 容易被沃尔玛误判为武器的"非武器"词 (用于规避)
-        ("en", "self defense", "hard_block"),   # 即使是钥匙扣也会触发
+    "weapon_false_positive": [  # 沃尔玛特别严格词组 (即使是日用品也会误判为武器)
+        ("en", "self defense", "hard_block"),
         ("en", "personal protection", "hard_block"),
         ("en", "pepper spray", "hard_block"),
+        ("en", "mace spray", "hard_block"),
         ("en", "stun gun", "hard_block"),
         ("en", "taser", "hard_block"),
-        ("en", "anti-theft", "warn"),           # 防盗类容易误伤
+        ("en", "anti-theft", "warn"),
         ("en", "lockout", "warn"),
+        ("en", "tactical", "warn"),
+        ("en", "cosplay weapon", "warn"),  # 虽然是 prop 但易误判
+        ("en", "replica gun", "hard_block"),
+        ("en", "foam blaster", "warn"),
+        ("en", "foam dart", "warn"),
+        ("en", "larp", "warn"),
+        ("en", "live action role play", "warn"),
+    ],
+    "tobacco_adult": [  # 烟草制品
+        ("en", "cigarette", "hard_block"),
+        ("en", "cigar", "hard_block"),
+        ("en", "tobacco", "hard_block"),
+        ("en", "shisha", "hard_block"),
+        ("en", "hookah", "hard_block"),
+        ("en", "e-cigarette", "hard_block"),
+        ("en", "vape", "warn"),
+        ("en", "juul", "hard_block"),
+        ("en", "nicotine pouch", "hard_block"),
+    ],
+    "alcohol": [
+        ("en", "alcohol", "hard_block"),
+        ("en", "beer", "hard_block"),
+        ("en", "wine", "warn"),  # 酒瓶套/杯等周边合法, 酒本身硬拒
+        ("en", "liquor", "hard_block"),
+        ("en", "whiskey", "hard_block"),
+        ("en", "vodka", "hard_block"),
+        ("en", "rum", "warn"),
+        ("en", "gin", "warn"),
+        ("en", "tequila", "hard_block"),
+        ("en", "sake", "warn"),
+    ],
+    "regulatory_keyword": [  # 合规敏感关键词 (需认证/受限)
+        ("en", "n95", "warn"),
+        ("en", "kn95", "warn"),
+        ("en", "fda approved", "warn"),
+        ("en", "ce certified", "warn"),
+        ("en", "rohs", "warn"),
+        ("en", "organic certified", "warn"),
+        ("en", "cgmp", "warn"),
+        ("en", "mercury", "warn"),
+        ("en", "lead free", "warn"),
+        ("en", "bpa free", "warn"),
+        ("en", "asbestos", "hard_block"),
+    ],
+    "counterfeit_signal": [  # 仿品高危词 (搬运场景)
+        ("en", "replica", "warn"),
+        ("en", "inspired by", "warn"),
+        ("en", "like original", "warn"),
+        ("en", "high copy", "hard_block"),
+        ("en", "1:1 copy", "hard_block"),
+        ("en", "aaa quality", "hard_block"),
+        ("en", "designer inspired", "hard_block"),
+        ("en", "knockoff", "hard_block"),
+        ("en", "dupe", "warn"),
+        ("en", "fake", "warn"),
     ],
 }
 
@@ -163,61 +302,157 @@ IP_COMPAT_PATTERNS = [
 LUXURY_BRANDS = [
     "Louis Vuitton", "LV", "Gucci", "Prada", "Hermes", "Chanel", "Dior",
     "Burberry", "Fendi", "Balenciaga", "Versace", "Armani", "Cartier",
-    "Tiffany", "Bulgari", "Rolex", "Omega", "Patek Philippe",
-    "Supreme", "Off-White", "Yeezy", "Palace",
+    "Tiffany", "Bulgari", "Bvlgari", "Rolex", "Omega", "Patek Philippe",
+    "Audemars Piguet", "Breitling", "IWC", "Tag Heuer",
+    "Supreme", "Off-White", "Yeezy", "Palace", "Bape",
+    "Céline", "Celine", "Givenchy", "Saint Laurent", "YSL",
+    "Valentino", "Bottega Veneta", "Loewe", "Mulberry",
+    "Coach", "Michael Kors", "Kate Spade", "Tory Burch",
+    "Rimowa", "Montblanc",
 ]
 
-# 运动品牌 (易撞)
+# 运动品牌
 SPORTS_BRANDS = [
     "Nike", "Adidas", "Puma", "Under Armour", "Reebok", "New Balance",
     "Converse", "Vans", "Asics", "The North Face", "Patagonia",
-    "Columbia", "Lululemon", "Jordan",
+    "Columbia", "Lululemon", "Jordan", "Yeezy",
+    "Skechers", "Timberland", "Dr. Martens", "Birkenstock",
+    "Fila", "Champion", "Kappa", "Mizuno", "Brooks", "Hoka",
+    "Salomon", "Oakley", "Ray-Ban", "Maui Jim",
+    "TaylorMade", "Callaway", "Titleist", "Wilson", "Spalding",
+    "Fanatics",
 ]
 
 # 科技巨头
 TECH_BRANDS = [
-    "Apple", "iPhone", "iPad", "MacBook", "AirPods",
+    "Apple", "iPhone", "iPad", "MacBook", "AirPods", "iMac", "iWatch", "Mac Mini",
     "Samsung", "Galaxy", "Google", "Pixel",
     "Microsoft", "Xbox", "PlayStation", "Sony", "Nintendo", "Switch",
-    "Amazon", "Kindle", "Alexa", "Echo", "Fire TV",
-    "Dyson", "Bose", "Beats", "GoPro",
+    "Amazon", "Kindle", "Alexa", "Echo", "Fire TV", "Ring", "Blink",
+    "Dyson", "Bose", "Beats", "GoPro", "DJI", "Anker", "Razer", "Logitech",
+    "Huawei", "Xiaomi", "OnePlus", "Oppo", "Vivo", "Redmi", "Honor",
+    "Garmin", "Fitbit", "Polar",
+    "HP", "Dell", "Lenovo", "ASUS", "Acer", "Razer",
+    "Canon", "Nikon", "Fujifilm", "Leica",
+    "Intel", "AMD", "NVIDIA", "Qualcomm",
 ]
 
-# 汽车品牌 (汽车配件兼容词常撞)
+# 汽车 / 摩托车品牌
 AUTO_BRANDS = [
     "Ford", "Chevrolet", "Chevy", "Toyota", "Honda", "Nissan",
-    "Mazda", "Subaru", "Hyundai", "Kia",
-    "BMW", "Mercedes-Benz", "Audi", "Porsche", "Volkswagen", "VW",
-    "Jeep", "Dodge", "Chrysler", "Ram", "GMC", "Cadillac", "Buick",
-    "Tesla", "Harley-Davidson", "Harley",
+    "Mazda", "Subaru", "Hyundai", "Kia", "Lexus", "Infiniti", "Acura",
+    "BMW", "Mercedes-Benz", "Mercedes", "Audi", "Porsche", "Volkswagen", "VW",
+    "Volvo", "Land Rover", "Range Rover", "Jaguar", "Mini Cooper",
+    "Jeep", "Dodge", "Chrysler", "Ram", "GMC", "Cadillac", "Buick", "Lincoln",
+    "Tesla", "Rivian", "Lucid",
+    "Lamborghini", "Ferrari", "Bugatti", "McLaren", "Maserati",
+    "Rolls-Royce", "Rolls Royce", "Bentley", "Maybach", "Aston Martin",
+    "Harley-Davidson", "Harley", "Indian Motorcycle",
+    "Ducati", "Kawasaki", "Yamaha", "Suzuki", "Triumph",
 ]
 
-# 迪士尼 / 卡通 IP
+# 迪士尼 / 卡通 / 动漫 / 游戏 IP
 CARTOON_IPS = [
+    # Disney
     "Disney", "Mickey Mouse", "Minnie Mouse", "Donald Duck", "Goofy",
     "Pixar", "Toy Story", "Frozen", "Elsa", "Anna", "Olaf",
+    "Moana", "Mulan", "Aladdin", "Cinderella", "Snow White", "Lion King",
+    "Beauty and the Beast", "Little Mermaid", "Tangled",
+    # Marvel / DC
     "Marvel", "Spider-Man", "Iron Man", "Captain America", "Thor", "Hulk",
-    "Avengers", "Black Panther", "Deadpool", "X-Men",
+    "Avengers", "Black Panther", "Deadpool", "X-Men", "Wolverine", "Venom",
+    "Guardians of the Galaxy", "Doctor Strange", "Ant-Man",
     "DC Comics", "Batman", "Superman", "Wonder Woman", "Joker",
+    "Aquaman", "Flash", "Green Lantern", "Harley Quinn",
+    # Star Wars / Harry Potter
     "Star Wars", "Darth Vader", "Yoda", "Baby Yoda", "Mandalorian",
-    "Harry Potter", "Hogwarts", "Dumbledore",
-    "Pokemon", "Pikachu",
-    "Minions", "Shrek", "Kung Fu Panda",
+    "Luke Skywalker", "Chewbacca", "Stormtrooper", "Lightsaber",
+    "Harry Potter", "Hogwarts", "Dumbledore", "Hermione", "Voldemort",
+    # 日本动漫
+    "Pokemon", "Pikachu", "Bulbasaur", "Charmander",
+    "Naruto", "One Piece", "Attack on Titan", "Demon Slayer", "Dragon Ball",
+    "My Hero Academia", "Jujutsu Kaisen", "Bleach", "Death Note",
+    "Studio Ghibli", "Totoro", "Spirited Away",
+    # 动画片 & 角色
+    "Minions", "Shrek", "Kung Fu Panda", "How to Train Your Dragon",
     "Peppa Pig", "Paw Patrol", "Hello Kitty", "Sanrio",
-    "Barbie", "Transformers", "Power Rangers",
-    "SpongeBob", "Dora", "PJ Masks",
+    "Barbie", "Bratz", "Transformers", "Power Rangers",
+    "SpongeBob", "Dora", "PJ Masks", "Bluey", "Cocomelon",
+    "Sesame Street", "Elmo", "Big Bird",
+    "Tom and Jerry", "Looney Tunes", "Bugs Bunny",
+    # 游戏 IP
+    "Minecraft", "Fortnite", "Roblox", "Call of Duty", "Halo",
+    "Super Mario", "Mario", "Luigi", "Zelda", "Link",
+    "Sonic", "Pac-Man", "Tetris",
+    "League of Legends", "World of Warcraft", "Overwatch",
+    "Grand Theft Auto", "GTA", "Final Fantasy",
+    # 玩具 IP
+    "LEGO", "Hot Wheels", "Transformers", "Fisher-Price", "Nerf",
+    "Rubik's Cube", "Tonka", "Monopoly", "Play-Doh",
 ]
 
-# 体育联赛/球队
+# 体育联赛/球队/运动员
 SPORTS_LEAGUES = [
-    "NFL", "NBA", "MLB", "NHL", "MLS", "FIFA", "UEFA",
-    "Super Bowl", "World Cup", "Olympics",
+    # 联赛
+    "NFL", "NBA", "MLB", "NHL", "MLS", "FIFA", "UEFA", "Premier League",
+    "Super Bowl", "World Cup", "Olympics", "NCAA", "March Madness",
+    # NBA 球队/球员
+    "Lakers", "Warriors", "Celtics", "Bulls", "Heat", "Knicks",
+    "LeBron James", "Stephen Curry", "Kevin Durant", "Giannis", "Luka Doncic",
+    "Michael Jordan", "Kobe Bryant",
+    # NFL 球队
+    "Cowboys", "Patriots", "Packers", "Steelers", "49ers", "Chiefs",
+    "Tom Brady", "Patrick Mahomes", "Aaron Rodgers",
+    # MLB 球队
+    "Yankees", "Red Sox", "Dodgers", "Cubs", "Giants",
+    # 足球球星/俱乐部
+    "Real Madrid", "Barcelona", "Manchester United", "Manchester City",
+    "Liverpool", "Chelsea", "Arsenal", "Juventus", "Bayern Munich", "PSG",
+    "Messi", "Cristiano Ronaldo", "Neymar", "Mbappe", "Haaland",
 ]
 
-# 著名大学/品牌 (常被印在 T 恤/水杯上)
+# 著名大学
 COLLEGE_BRANDS = [
     "Harvard", "Yale", "Princeton", "MIT", "Stanford",
-    "Cornell", "Columbia", "UCLA", "Berkeley", "NYU",
+    "Cornell", "Columbia University", "UCLA", "UC Berkeley", "NYU",
+    "Oxford", "Cambridge", "Duke", "Michigan", "Wisconsin",
+    "Texas", "USC", "Notre Dame", "Florida State",
+]
+
+# 食品饮料巨头 (易侵权产品相关饰品/包装/瓶塞)
+FOOD_BEVERAGE_BRANDS = [
+    "Coca-Cola", "Coke", "Pepsi", "Sprite", "Fanta",
+    "Starbucks", "McDonald's", "KFC", "Burger King", "Subway",
+    "Nestle", "Hershey", "Cadbury", "Mars", "M&M", "Snickers",
+    "Kraft", "Heinz", "Kellogg's", "General Mills",
+    "Red Bull", "Monster Energy", "Gatorade",
+    "Oreo", "Kit Kat", "Ritz", "Pringles", "Doritos",
+]
+
+# 明星 / 艺人 (T 恤海报类)
+CELEBRITIES = [
+    "Taylor Swift", "Beyoncé", "Rihanna", "Lady Gaga",
+    "Drake", "Kanye West", "Kim Kardashian",
+    "BTS", "BLACKPINK", "Twice",
+    "Elvis Presley", "Michael Jackson", "Beatles", "Bob Marley",
+    "Marilyn Monroe", "Audrey Hepburn", "Albert Einstein",
+]
+
+# 家电 / 品牌厨具
+APPLIANCE_BRANDS = [
+    "KitchenAid", "Cuisinart", "Ninja", "Instant Pot", "Keurig", "Nespresso",
+    "Breville", "Vitamix", "Panasonic", "Hamilton Beach", "Black+Decker",
+    "Whirlpool", "Maytag", "Frigidaire", "LG", "GE Appliances",
+    "Roomba", "iRobot", "Shark",
+]
+
+# 美妆品牌
+BEAUTY_BRANDS = [
+    "MAC", "Maybelline", "Revlon", "L'Oreal", "L'Oréal",
+    "Estée Lauder", "Lancôme", "Clinique", "Shiseido",
+    "Sephora", "Ulta",
+    "Kylie Cosmetics", "Fenty Beauty", "Urban Decay",
+    "La Mer", "SK-II", "Olay",
 ]
 
 
@@ -305,11 +540,19 @@ def build_ip_trigger_terms(conn):
     for brand in AUTO_BRANDS:
         values.append((brand, "keyword", "auto_brand", "warn", "汽车品牌 (兼容词部分合法)"))
     for ip in CARTOON_IPS:
-        values.append((ip, "keyword", "cartoon_ip", "hard_block", "卡通/电影 IP"))
+        values.append((ip, "keyword", "cartoon_ip", "hard_block", "卡通/电影/动漫/游戏 IP"))
     for league in SPORTS_LEAGUES:
-        values.append((league, "keyword", "sports_league", "hard_block", "体育联赛"))
+        values.append((league, "keyword", "sports_league", "hard_block", "体育联赛/球队/球员"))
     for college in COLLEGE_BRANDS:
         values.append((college, "keyword", "college_brand", "warn", "大学品牌"))
+    for fb in FOOD_BEVERAGE_BRANDS:
+        values.append((fb, "keyword", "food_brand", "hard_block", "食品饮料巨头"))
+    for celeb in CELEBRITIES:
+        values.append((celeb, "keyword", "celebrity", "hard_block", "明星/艺人"))
+    for app in APPLIANCE_BRANDS:
+        values.append((app, "keyword", "appliance_brand", "hard_block", "家电品牌"))
+    for bt in BEAUTY_BRANDS:
+        values.append((bt, "keyword", "beauty_brand", "hard_block", "美妆品牌"))
 
     execute_values(cur,
         "INSERT INTO ip_trigger_terms (pattern, pattern_type, trigger_category, severity, notes) "

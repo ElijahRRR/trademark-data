@@ -30,37 +30,129 @@ import psycopg2
 DB_CONN = "dbname=uspto user=nextderboy"
 
 # Amazon category path 硬禁关键词 (搬运场景不允许)
+# 所有关键词 lowercase 后在 category_path (全转小写) 里 substring 匹配
 CATEGORY_HARD_KEYWORDS = [
+    # --- 武器类 ---
     ("firearm",       "regulatory", "firearm"),
     ("ammunition",    "regulatory", "firearm"),
+    ("ammo ",         "regulatory", "firearm"),
+    ("gunpowder",     "regulatory", "firearm"),
     ("weapon",        "regulatory", "weapon"),
     ("knife",         "regulatory", "weapon"),
     ("sword",         "regulatory", "weapon"),
+    ("bayonet",       "regulatory", "weapon"),
+    ("dagger",        "regulatory", "weapon"),
+    ("machete",       "regulatory", "weapon"),
     ("crossbow",      "regulatory", "weapon"),
+    ("compound bow",  "regulatory", "weapon"),
+    ("recurve bow",   "regulatory", "weapon"),
+    ("throwing star", "regulatory", "weapon"),
+    ("shuriken",      "regulatory", "weapon"),
+    ("nunchak",       "regulatory", "weapon"),
+    ("nunchuck",      "regulatory", "weapon"),
     ("pepper spray",  "regulatory", "weapon"),
     ("stun gun",      "regulatory", "weapon"),
+    ("taser",         "regulatory", "weapon"),
     ("self-defense",  "regulatory", "weapon"),
+    ("self defense",  "regulatory", "weapon"),
+    ("brass knuckle", "regulatory", "weapon"),
+    ("switchblade",   "regulatory", "weapon"),
+    # --- 仿真/玩具武器 (沃尔玛多限制) ---
+    ("airsoft",       "regulatory", "imitation_weapon"),
+    ("paintball",     "regulatory", "imitation_weapon"),
+    ("bb gun",        "regulatory", "imitation_weapon"),
+    ("blowgun",       "regulatory", "imitation_weapon"),
+    ("slingshot",     "regulatory", "imitation_weapon"),
+    ("replica firearm","regulatory", "imitation_weapon"),
+    ("prop gun",      "regulatory", "imitation_weapon"),
+    # --- 烟花爆炸 ---
+    ("firework",      "regulatory", "pyrotechnic"),
+    ("pyrotechnic",   "regulatory", "pyrotechnic"),
+    ("sparkler",      "regulatory", "pyrotechnic"),
+    ("explosive",     "regulatory", "pyrotechnic"),
+    ("smoke bomb",    "regulatory", "pyrotechnic"),
+    # --- 酒类 ---
     ("alcohol",       "regulatory", "alcohol"),
     ("wine",          "regulatory", "alcohol"),
     ("beer",          "regulatory", "alcohol"),
+    ("liquor",        "regulatory", "alcohol"),
+    ("whiskey",       "regulatory", "alcohol"),
+    ("vodka",         "regulatory", "alcohol"),
+    # --- 烟草/尼古丁 ---
     ("tobacco",       "regulatory", "tobacco"),
     ("cigarette",     "regulatory", "tobacco"),
+    ("cigar",         "regulatory", "tobacco"),
     ("vape",          "regulatory", "tobacco"),
     ("e-cigarette",   "regulatory", "tobacco"),
+    ("nicotine",      "regulatory", "tobacco"),
+    ("shisha",        "regulatory", "tobacco"),
+    ("hookah",        "regulatory", "tobacco"),
+    # --- 毒品/管制 ---
     ("cbd",           "regulatory", "drug"),
     ("cannabis",      "regulatory", "drug"),
     ("marijuana",     "regulatory", "drug"),
     ("kratom",        "regulatory", "drug"),
+    ("hemp extract",  "regulatory", "drug"),
+    ("thc",           "regulatory", "drug"),
+    ("bong",          "regulatory", "drug"),
+    ("dab rig",       "regulatory", "drug"),
+    ("rolling paper", "regulatory", "drug"),
+    ("grinder",       "regulatory", "drug_paraphernalia"),
+    ("pipe",          "regulatory", "drug_paraphernalia"),
+    # --- 医疗器械 ---
     ("medical device","regulatory", "medical"),
     ("prescription",  "regulatory", "medical"),
+    ("otoscope",      "regulatory", "medical"),
+    ("stethoscope",   "regulatory", "medical"),
+    ("blood pressure","regulatory", "medical"),
+    ("glucose monitor","regulatory", "medical"),
+    ("syringe",       "regulatory", "medical"),
+    ("surgical",      "regulatory", "medical"),
+    ("dental",        "regulatory", "medical"),
+    ("hearing aid",   "regulatory", "medical"),
+    # --- 化妆品 ---
     ("cosmetic",      "regulatory", "cosmetic"),
     ("fragrance",     "regulatory", "cosmetic"),
     ("perfume",       "regulatory", "cosmetic"),
+    ("cologne",       "regulatory", "cosmetic"),
+    ("face mask",     "regulatory", "cosmetic"),  # 口罩除外, 类目路径已区分
+    ("lipstick",      "regulatory", "cosmetic"),
+    ("foundation",    "regulatory", "cosmetic"),
+    ("skin care",     "regulatory", "cosmetic"),
+    # --- 膳食补充剂 ---
     ("dietary supplement", "regulatory", "supplement"),
     ("vitamin",       "regulatory", "supplement"),
+    ("probiotic",     "regulatory", "supplement"),
+    ("herbal supplement", "regulatory", "supplement"),
+    ("weight loss supplement", "regulatory", "supplement"),
+    # --- 食品 ---
     ("pet food",      "regulatory", "pet_food"),
     ("baby food",     "regulatory", "food"),
+    ("infant formula","regulatory", "food"),
     ("grocery",       "regulatory", "food"),
+    ("raw meat",      "regulatory", "food"),
+    ("fresh seafood", "regulatory", "food"),
+    # --- 成人/性 ---
+    ("erotic",        "regulatory", "adult"),
+    ("adult novelty", "regulatory", "adult"),
+    ("sex toy",       "regulatory", "adult"),
+    ("sexual aid",    "regulatory", "adult"),
+    ("fetish",        "regulatory", "adult"),
+    # --- 化学品/有害 ---
+    ("pesticide",     "regulatory", "chemical"),
+    ("insecticide",   "regulatory", "chemical"),
+    ("herbicide",     "regulatory", "chemical"),
+    ("rodenticide",   "regulatory", "chemical"),
+    ("lead paint",    "regulatory", "chemical"),
+    ("asbestos",      "regulatory", "chemical"),
+    # --- 野生动物制品 ---
+    ("ivory",         "regulatory", "wildlife"),
+    ("fur coat",      "regulatory", "wildlife"),
+    ("real fur",      "regulatory", "wildlife"),
+    ("leopard skin",  "regulatory", "wildlife"),
+    # --- 活体动物 ---
+    ("live animal",   "regulatory", "live_animal"),
+    ("live fish",     "regulatory", "live_animal"),
 ]
 
 # 兼容词 regex → 抽取候选品牌名
@@ -68,8 +160,23 @@ COMPAT_RE = [
     re.compile(r"\b(?:for|compatible\s+with|fits|replaces?|replacement\s+for)\s+([A-Z][A-Za-z0-9][A-Za-z0-9\s&\-]{1,40}?)(?=\s+(?:[a-z]|\d|,|\.|;|for|compatible|with)|$)", re.IGNORECASE),
 ]
 
-# IP 真实性声明 (对搬运极敏感) — 只保留强信号词, 去掉 real/original 避免 real-time/original design 误伤
-AUTHENTICITY_RE = re.compile(r"\b(?:authentic|genuine|official)\b", re.I)
+# IP 真实性声明 (搬运场景极敏感) — 强信号词 + 强搭配短语
+AUTHENTICITY_RE = re.compile(
+    r"\b(?:"
+    r"authentic|genuine|official\s+(?:product|merchandise|brand)|"
+    r"100%\s*(?:original|authentic)|"
+    r"brand\s+new\s+original|"
+    r"OEM\s+(?:replacement|original|part)|"
+    r"factory\s+sealed|"
+    r"direct\s+from\s+manufacturer|direct\s+from\s+factory|"
+    r"certified\s+(?:original|authentic|genuine)|"
+    r"licensed\s+(?:product|reseller|merchandise)|"
+    r"limited\s+edition|collector'?s\s+(?:edition|item)|"
+    r"heritage\s+collection|"
+    r"proprietary\s+design"
+    r")\b",
+    re.I,
+)
 
 # IP 关键词的歧义词集合 (hard_block → warn 降级)
 IP_AMBIGUOUS_WORDS = {
@@ -110,7 +217,27 @@ def _full_text(product: Dict) -> str:
     return " ".join(parts)
 
 
+# 不作为 ASIN 直击信号的 reason_category (可修复 / 非产品本身问题)
+# - 类目映射问题 (用户持续优化类目映射, 不作历史教训)
+# - 运维类 (tax code / end date / pricing, 非合规违规)
+# - 无原因/系统错误 (数据源噪声)
+ASIN_HIT_EXCLUDED_REASONS = {
+    "prohibited_generic",    # ProductType 选错, 靠 A-3 映射解决
+    "end_date",              # 运维
+    "tax_code", "no_price", "pricing",
+    "system_error",
+    "no_reason",
+    "internal_flag",         # 沃尔玛团队标记, 未给原因
+    "other",
+    "refurbished",           # 翻新政策, 改写标题可解
+}
+
+
 def rule_asin_hit(product: Dict, conn) -> List[Dict]:
+    """
+    ASIN 历史直击: 只用"真合规违规"类别做硬拒信号
+    排除 ProductType 选错 / 运维 / 系统错误 — 这些可通过其他手段修复
+    """
     asin = product.get("asin")
     if not asin:
         return []
@@ -121,8 +248,9 @@ def rule_asin_hit(product: Dict, conn) -> List[Dict]:
                STRING_AGG(DISTINCT walmart_sku, ', ') skus
         FROM walmart_suspension_history
         WHERE amazon_asin = %s
+          AND NOT (reason_category = ANY(%s))
         GROUP BY reason_category
-    """, (asin,))
+    """, (asin, list(ASIN_HIT_EXCLUDED_REASONS)))
     rows = cur.fetchall()
     cur.close()
     flags = []
@@ -132,7 +260,7 @@ def rule_asin_hit(product: Dict, conn) -> List[Dict]:
             "flag_type": "historical_recall",
             "flag_category": "historical",
             "flag_code": f"asin_history_{reason_cat}",
-            "description": f"ASIN {asin} 历史违规 {hits} 次 ({reason_cat})",
+            "description": f"ASIN {asin} 历史真违规 {hits} 次 ({reason_cat})",
             "severity": severity,
             "evidence": {
                 "asin": asin, "reason_category": reason_cat, "hits": hits,
@@ -454,8 +582,9 @@ def audit_product(product: Dict, conn, lexicons=None) -> Dict:
     all_flags.extend(rule_authenticity_claim(product))
     all_flags.extend(rule_ptype_mapping(product, conn))
     # 相似度召回 (B-3): 对标题与历史违规做 trigram 相似, 命中 warn/hard_block
+    # 永远排除自身 ASIN (正常采集场景 ASIN 不在 history 里无影响; 回测场景避免自撞作弊)
     from audit_recall import rule_historical_similarity
-    all_flags.extend(rule_historical_similarity(product, conn))
+    all_flags.extend(rule_historical_similarity(product, conn, exclude_asin=product.get("asin")))
 
     # 按 category 计算风险分
     def risk_for(cat):

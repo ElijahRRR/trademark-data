@@ -22,6 +22,7 @@ C-3 视觉审核 — qwen-vl-plus 对 hold_manual 产品的图片做 IP / 冒犯
 }
 """
 import argparse
+import asyncio
 import concurrent.futures as cf
 import time
 from typing import Dict, List
@@ -29,7 +30,7 @@ from typing import Dict, List
 import psycopg2
 from psycopg2.extras import Json
 
-from audit_llm_adapter import vision_json, model_vision
+from audit_llm_adapter import vision_json, vision_json_async, model_vision
 
 DB_CONN = "dbname=uspto user=nextderboy"
 
@@ -76,42 +77,96 @@ def _parse_image_urls(s: str, limit=3) -> List[str]:
     return urls[:limit]
 
 
-def audit_product_vision(product: Dict, max_images=3) -> Dict:
-    """对一条产品调 qwen-vl"""
-    urls = _parse_image_urls(product.get("image_urls") or "", limit=max_images)
-    if not urls:
-        return {"vision_verdict": "hold", "visual_risk": 50,
-                "reasoning": "无图片 URL 可审", "_no_images": True}
+def _postprocess_vision(r: Dict) -> Dict:
+    for boolk in ("has_logo", "has_cartoon_ip", "has_sports_team",
+                   "has_offensive_image", "has_weapon_drug_image"):
+        r.setdefault(boolk, False)
+    r["visual_risk"] = int(r.get("visual_risk") or 0)
+    if r.get("visual_verdict") not in ("approve", "hold", "reject"):
+        r["visual_verdict"] = "reject" if r["visual_risk"] >= 60 else (
+            "hold" if r["visual_risk"] >= 20 else "approve")
+    return r
+
+
+def _build_vision_prompt(product):
+    urls = _parse_image_urls(product.get("image_urls") or "")
     user = (
         f"商品标题: {product.get('title')}\n"
         f"类目: {product.get('category_path')}\n"
         f"品牌: {product.get('brand')}\n"
         f"请审核以下 {len(urls)} 张商品图是否有 IP 侵权/冒犯/违禁元素"
     )
+    return user, urls
+
+
+def audit_product_vision(product: Dict, max_images=3) -> Dict:
+    """同步版本"""
+    user, urls = _build_vision_prompt(product)
+    if not urls:
+        return {"vision_verdict": "hold", "visual_risk": 50,
+                "reasoning": "无图片 URL 可审", "_no_images": True}
     try:
-        r = vision_json(SYSTEM_PROMPT, user, urls, model=model_vision())
+        r = vision_json(SYSTEM_PROMPT, user, urls[:max_images], model=model_vision())
     except Exception as e:
         return {"_error": str(e), "vision_verdict": "hold"}
-    # 类型兜底
-    for boolk in ("has_logo", "has_cartoon_ip", "has_sports_team",
-                   "has_offensive_image", "has_weapon_drug_image"):
-        r.setdefault(boolk, False)
-    r["visual_risk"] = int(r.get("visual_risk") or 0)
-    if r.get("visual_verdict") not in ("approve", "hold", "reject"):
-        r["visual_verdict"] = "reject" if r["visual_risk"] >= 70 else (
-            "hold" if r["visual_risk"] >= 30 else "approve")
-    return r
+    return _postprocess_vision(r)
+
+
+async def audit_product_vision_async(product: Dict, max_images=3) -> Dict:
+    """异步版本 (高并发)"""
+    user, urls = _build_vision_prompt(product)
+    if not urls:
+        return {"vision_verdict": "hold", "visual_risk": 50,
+                "reasoning": "无图片 URL 可审", "_no_images": True}
+    try:
+        r = await vision_json_async(SYSTEM_PROMPT, user, urls[:max_images],
+                                      model=model_vision())
+    except Exception as e:
+        return {"_error": str(e), "vision_verdict": "hold"}
+    return _postprocess_vision(r)
+
+
+async def _run_vision_async(rows, cols, concurrency=50, verbose=True):
+    sem = asyncio.Semaphore(concurrency)
+    counts = {"approve": 0, "hold": 0, "reject": 0, "no_images": 0, "error": 0}
+    done = [0]
+    t0 = time.time()
+
+    async def one(row):
+        async with sem:
+            d = dict(zip(cols, row))
+            r = await audit_product_vision_async(d)
+            if r.get("_error"):
+                counts["error"] += 1
+            elif r.get("_no_images"):
+                counts["no_images"] += 1
+            else:
+                counts[r.get("visual_verdict", "hold")] += 1
+            done[0] += 1
+            if verbose and done[0] % 100 == 0:
+                elapsed = time.time() - t0
+                rate = done[0] / max(elapsed, 0.001)
+                print(f"  视觉进度 {done[0]}/{len(rows)} ({rate:.1f}/s)", flush=True)
+            return d, r
+
+    results = await asyncio.gather(*(one(r) for r in rows))
+    return results, counts, time.time() - t0
 
 
 def run_vision_on_batch(batch_file, verdict_filter=("hold_manual",),
-                        max_workers=4, limit=None, verbose=True):
-    """对指定 batch 的 hold 产品调 qwen-vl"""
+                        concurrency=50, limit=None, verbose=True,
+                        max_workers=None):
+    """异步视觉审核"""
+    if max_workers is not None and concurrency == 50:
+        concurrency = max(concurrency, max_workers * 10)
+
     conn = psycopg2.connect(DB_CONN)
     cur = conn.cursor()
     cur.execute("""
         SELECT pa.id, pa.asin, pa.stage_id, pa.verdict,
                ps.title, ps.brand, ps.category_path, ps.image_urls, pa.overall_risk,
-               pa.llm_raw_response
+               pa.ip_risk, pa.offensive_risk, pa.regulatory_risk,
+               pa.llm_raw_response, pa.reason_summary
         FROM product_audits pa
         JOIN products_stage ps ON ps.id = pa.stage_id
         WHERE pa.batch_file = %s
@@ -124,51 +179,50 @@ def run_vision_on_batch(batch_file, verdict_filter=("hold_manual",),
     if limit:
         rows = rows[:limit]
     if verbose:
-        print(f"视觉审核: {len(rows)} 产品")
+        print(f"视觉审核: {len(rows)} 产品 (concurrency={concurrency})")
     cur.close()
 
-    t0 = time.time()
+    results, counts, elapsed = asyncio.run(
+        _run_vision_async(rows, cols, concurrency=concurrency, verbose=verbose)
+    )
 
-    def worker(row):
-        d = dict(zip(cols, row))
-        r = audit_product_vision(d)
-        return d, r
+    # 视觉只能升级不能降级: approve < hold_manual < reject
+    ORDER = {"approve": 0, "hold_manual": 1, "reject": 2}
 
     updates = []
-    verdict_counts = {"approve": 0, "hold": 0, "reject": 0, "no_images": 0, "error": 0}
+    for d, r in results:
+        vv = r.get("visual_verdict", "hold")
+        vision_mapped = "hold_manual" if vv == "hold" else vv
+        old_verdict = d["verdict"]
+        # 只允许 verdict 升级 (严重度 ↑), 不允许降级
+        if ORDER.get(vision_mapped, 0) > ORDER.get(old_verdict, 0):
+            final_verdict = vision_mapped
+        else:
+            final_verdict = old_verdict
+        # 错误情况下也不降级
+        if r.get("_error"):
+            final_verdict = old_verdict
 
-    with cf.ThreadPoolExecutor(max_workers=max_workers) as ex:
-        for d, r in ex.map(worker, rows):
-            if r.get("_error"):
-                verdict_counts["error"] += 1
-            elif r.get("_no_images"):
-                verdict_counts["no_images"] += 1
-            else:
-                verdict_counts[r.get("visual_verdict", "hold")] += 1
-
-            vv = r.get("visual_verdict", "hold")
-            mapped = "hold_manual" if vv == "hold" else vv
-            # 合并之前 llm_raw_response 存新结果
-            prev = d.get("llm_raw_response") or {}
-            if isinstance(prev, str):
-                import json as _json
-                try:
-                    prev = _json.loads(prev)
-                except Exception:
-                    prev = {}
-            prev["vision"] = r
-            visual_risk = r.get("visual_risk") or 0
-            new_overall = max(d.get("overall_risk") or 0, visual_risk)
-            updates.append((
-                mapped,
-                max(prev.get("ip_risk") or 0, visual_risk if r.get("has_logo") or r.get("has_cartoon_ip") or r.get("has_sports_team") else 0),
-                max(prev.get("offensive_risk") or 0, visual_risk if r.get("has_offensive_image") or r.get("has_weapon_drug_image") else 0),
-                prev.get("regulatory_risk") or 0,
-                new_overall,
-                (((prev.get("reasoning") or "") + " | 视觉: " + (r.get("reasoning") or ""))[:500]),
-                Json(prev),
-                d["id"],
-            ))
+        import json as _json
+        prev = d.get("llm_raw_response") or {}
+        if isinstance(prev, str):
+            try:
+                prev = _json.loads(prev)
+            except Exception:
+                prev = {}
+        prev["vision"] = r
+        visual_risk = r.get("visual_risk") or 0
+        has_ip_signal = r.get("has_logo") or r.get("has_cartoon_ip") or r.get("has_sports_team")
+        has_off_signal = r.get("has_offensive_image") or r.get("has_weapon_drug_image")
+        new_ip = max(d.get("ip_risk") or 0, visual_risk if has_ip_signal else 0)
+        new_off = max(d.get("offensive_risk") or 0, visual_risk if has_off_signal else 0)
+        new_overall = max(d.get("overall_risk") or 0, visual_risk)
+        updates.append((
+            final_verdict, new_ip, new_off,
+            d.get("regulatory_risk") or 0, new_overall,
+            (((d.get("reason_summary") or "") + " | 视觉: " + (r.get("reasoning") or ""))[:500]),
+            Json(prev), d["id"],
+        ))
 
     cur = conn.cursor()
     cur.executemany("""
@@ -183,22 +237,26 @@ def run_vision_on_batch(batch_file, verdict_filter=("hold_manual",),
     cur.close()
     conn.close()
 
-    elapsed = time.time() - t0
     if verbose:
-        print(f"视觉审核完成: {len(updates)} 产品, {elapsed:.1f}s (avg {elapsed/max(1,len(updates)):.2f}s/product)")
+        print(f"视觉审核完成: {len(updates)} 产品, {elapsed:.1f}s "
+              f"(avg {elapsed/max(1,len(updates)):.2f}s, {len(updates)/max(elapsed,0.001):.1f}/s)")
         print("视觉 verdict 分布:")
-        for k, v in verdict_counts.items():
+        for k, v in counts.items():
             print(f"  {k}: {v}")
-    return verdict_counts
+    return counts
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--batch", required=True)
-    p.add_argument("--limit", type=int, default=20)
-    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--limit", type=int, default=None)
+    p.add_argument("--concurrency", type=int, default=50)
+    p.add_argument("--include-approve", action="store_true",
+                   help="同时扫 approve 池 (找漏网)")
     args = p.parse_args()
-    run_vision_on_batch(args.batch, limit=args.limit, max_workers=args.workers)
+    vf = ("hold_manual", "approve") if args.include_approve else ("hold_manual",)
+    run_vision_on_batch(args.batch, verdict_filter=vf,
+                         limit=args.limit, concurrency=args.concurrency)
 
 
 if __name__ == "__main__":
