@@ -32,6 +32,11 @@ def step_audit(batch_file):
     return run_batch(batch_file)
 
 
+def step_llm(batch_file, max_workers=10):
+    from audit_llm import run_llm_on_batch
+    return run_llm_on_batch(batch_file, max_workers=max_workers)
+
+
 def step_upload(batch_file):
     from audit_upload import upload_all
     upload_all(batch_file=batch_file)
@@ -42,7 +47,9 @@ def main():
     p.add_argument("--xlsx", help="采集 xlsx 路径 (normalize/all 阶段用)")
     p.add_argument("--batch", help="batch_file 名 (audit/upload 阶段用, 默认=xlsx 文件名)")
     p.add_argument("--action", default="all",
-                   choices=["normalize", "audit", "upload", "all"])
+                   choices=["normalize", "audit", "llm", "upload", "all"])
+    p.add_argument("--llm-workers", type=int, default=10)
+    p.add_argument("--skip-llm", action="store_true", help="all 时跳过 LLM 二审")
     args = p.parse_args()
 
     batch = args.batch
@@ -61,14 +68,21 @@ def main():
         if not batch:
             print("[ERR] audit/all 需要 --batch 或 --xlsx 推断")
             sys.exit(1)
-        print(f"\n{'='*60}\n[2/3] L1 硬规则审核\n{'='*60}")
+        print(f"\n{'='*60}\n[L1] 硬规则审核\n{'='*60}")
         step_audit(batch)
+
+    if args.action == "llm" or (args.action == "all" and not args.skip_llm):
+        if not batch:
+            print("[ERR] llm/all 需要 --batch 或 --xlsx 推断")
+            sys.exit(1)
+        print(f"\n{'='*60}\n[L2] LLM 二审 (对 hold_manual)\n{'='*60}")
+        step_llm(batch, max_workers=args.llm_workers)
 
     if args.action in ("upload", "all"):
         if not batch:
             print("[ERR] upload/all 需要 --batch 或 --xlsx 推断")
             sys.exit(1)
-        print(f"\n{'='*60}\n[3/3] 推送飞书\n{'='*60}")
+        print(f"\n{'='*60}\n[推送] 飞书输出\n{'='*60}")
         step_upload(batch)
 
     print(f"\n{'='*60}\n全流程耗时 {time.time() - t_all:.1f}s\n{'='*60}")
