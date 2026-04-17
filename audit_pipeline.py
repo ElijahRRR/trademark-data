@@ -37,6 +37,11 @@ def step_llm(batch_file, max_workers=10):
     return run_llm_on_batch(batch_file, max_workers=max_workers)
 
 
+def step_vision(batch_file, max_workers=4, limit=None):
+    from audit_vision import run_vision_on_batch
+    return run_vision_on_batch(batch_file, max_workers=max_workers, limit=limit)
+
+
 def step_upload(batch_file):
     from audit_upload import upload_all
     upload_all(batch_file=batch_file)
@@ -47,9 +52,13 @@ def main():
     p.add_argument("--xlsx", help="采集 xlsx 路径 (normalize/all 阶段用)")
     p.add_argument("--batch", help="batch_file 名 (audit/upload 阶段用, 默认=xlsx 文件名)")
     p.add_argument("--action", default="all",
-                   choices=["normalize", "audit", "llm", "upload", "all"])
+                   choices=["normalize", "audit", "llm", "vision", "upload", "all"])
     p.add_argument("--llm-workers", type=int, default=10)
+    p.add_argument("--vision-workers", type=int, default=4)
+    p.add_argument("--vision-limit", type=int, default=None,
+                   help="限制视觉审核的产品数 (成本/时间控制)")
     p.add_argument("--skip-llm", action="store_true", help="all 时跳过 LLM 二审")
+    p.add_argument("--skip-vision", action="store_true", help="all 时跳过视觉审核")
     args = p.parse_args()
 
     batch = args.batch
@@ -77,6 +86,13 @@ def main():
             sys.exit(1)
         print(f"\n{'='*60}\n[L2] LLM 二审 (对 hold_manual)\n{'='*60}")
         step_llm(batch, max_workers=args.llm_workers)
+
+    if args.action == "vision" or (args.action == "all" and not args.skip_vision):
+        if not batch:
+            print("[ERR] vision/all 需要 --batch 或 --xlsx 推断")
+            sys.exit(1)
+        print(f"\n{'='*60}\n[L2-Vision] 视觉审核 (qwen-vl-plus)\n{'='*60}")
+        step_vision(batch, max_workers=args.vision_workers, limit=args.vision_limit)
 
     if args.action in ("upload", "all"):
         if not batch:
