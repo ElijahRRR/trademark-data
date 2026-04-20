@@ -73,9 +73,9 @@ def get_async_client():
         api_key = _CONF.get("LLM_API_KEY")
         if not api_key:
             raise RuntimeError("LLM_API_KEY 未配置")
-        # httpx 连接池提高 limits 支持高并发
-        limits = httpx.Limits(max_connections=200, max_keepalive_connections=100)
-        http_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(60.0))
+        # httpx 连接池提高 limits 支持高并发 (500 足够应对 300+ 并发)
+        limits = httpx.Limits(max_connections=500, max_keepalive_connections=300)
+        http_client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(120.0))
         _async_client = AsyncOpenAI(base_url=base_url, api_key=api_key, http_client=http_client)
     return _async_client
 

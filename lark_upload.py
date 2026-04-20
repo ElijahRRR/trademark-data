@@ -1,9 +1,13 @@
 """
 把本地 DB 结果推送到飞书
-- 公司概览 (ym27aR)    : ~1775 行 × 10 列
-- 品牌明细 (6IpYri)    : ~126000 行 × 9 列
-- 未找到清单 (wynwtK)  : ~2310 行 × 7 列
-- 黑名单品牌 (sdO3YJ)  : ~20800 行 × 2 列 (公司-品牌对照)
+
+输出 sheet:
+- 公司概览      (ym27aR)  : ~1775 行 × 10 列
+- 品牌明细      (6IpYri)  : ~126000 行 × 9 列
+- 未找到清单    (wynwtK)  : ~2310 行 × 7 列
+- TRO品牌库     (sdO3YJ)  : ~19000 行 × 3 列 (公司名称 | 品牌名 | 入库日期)
+- 黑名单品牌    (jF8dOw)  : ~36000 行 × 3 列 (品牌名 | 来源 | 入库日期)
+  = TRO品牌库 ∪ 其他收集 去重
 
 每个 sheet 的流程:
 1. ensure_rows - 不够就扩
@@ -11,14 +15,40 @@
 3. write_range - 从第 2 行写入新数据
 """
 import time
+from datetime import datetime, timedelta
 
 import psycopg2
 
 from lark_config import SHEET_IDS
-from lark_io import clear_sheet_data, ensure_rows, write_range
+from lark_io import clear_sheet_data, ensure_rows, read_range, write_range
 
 
 DB_CONN = "dbname=uspto user=nextderboy"
+
+# 飞书/Excel 日期序列号基准: day 0 = 1899-12-30
+_DATE_EPOCH = datetime(1899, 12, 30)
+
+
+def _normalize_date(val) -> str:
+    """将飞书单元格值统一转为 YYYY-MM-DD 字符串。
+    处理: 日期字符串 / 数字序列号 / None/空值
+    """
+    if val is None:
+        return ""
+    s = str(val).strip()
+    if not s:
+        return ""
+    # 已经是 YYYY-MM-DD 格式
+    if len(s) == 10 and s[4] == "-" and s[7] == "-":
+        return s
+    # 尝试数字序列号
+    try:
+        serial = int(float(s))
+        if 30000 < serial < 60000:  # 合理范围 ~1982 ~ 2064
+            return (_DATE_EPOCH + timedelta(days=serial)).strftime("%Y-%m-%d")
+    except (ValueError, OverflowError):
+        pass
+    return s
 
 
 def _fetch_company_overview():
@@ -98,10 +128,30 @@ def _fetch_company_overview():
 
 
 def _fetch_brand_details():
-    """生成品牌明细数据: 9 列
+    """生成品牌明细数据: 10 列
     列: 公司名称 | 品牌名 | Serial Number | 注册号 | 状态 |
-        Nice编号 | Nice类目(中) | Nice类目(英) | 商品/服务描述
+        Nice编号 | Nice类目(中) | Nice类目(英) | 商品/服务描述 | 入库日期
+    入库日期保留飞书中已有记录的日期，仅新增记录赋今日日期。
     """
+    # 读取飞书现有入库日期，避免覆写历史日期
+    existing_dates = {}
+    try:
+        sid = SHEET_IDS["brand_details"]
+        print("    读取已有入库日期...")
+        existing = read_range(sid, start_row=2, end_col="J")
+        for r in existing:
+            if len(r) >= 6 and r[0] and r[1]:
+                # key = (公司, 品牌, Serial, Nice编号)
+                key = (str(r[0]).strip(), str(r[1]).strip(),
+                       str(r[2]).strip() if r[2] else "",
+                       str(r[5]).strip() if len(r) > 5 and r[5] else "")
+                date = _normalize_date(r[9] if len(r) >= 10 else None)
+                if date:
+                    existing_dates[key] = date
+        print(f"    已有入库日期: {len(existing_dates)} 条")
+    except Exception as e:
+        print(f"    读取已有日期失败 (将全用今日日期): {e}")
+
     conn = psycopg2.connect(DB_CONN)
     cur = conn.cursor()
     cur.execute("""
@@ -118,25 +168,46 @@ def _fetch_brand_details():
     cur.close()
     conn.close()
 
+    today = time.strftime("%Y-%m-%d")
     out = []
     for r in rows:
-        reg = r[3] if r[3] and r[3] != "0000000" else "(申请中)"
+        company = r[0] or ""
+        brand = r[1] or ""
         serial = str(r[2]) if r[2] is not None else ""
+        int_code = r[5] or ""
+        key = (company, brand, serial, int_code)
+        date = existing_dates.get(key, today)
+
+        reg = r[3] if r[3] and r[3] != "0000000" else "(申请中)"
         gs = (r[8] or "")
         if len(gs) > 500:
             gs = gs[:500] + "..."
         out.append([
-            r[0] or "", r[1] or "", serial, reg, r[4] or "",
-            r[5] or "", r[6] or "", r[7] or "", gs,
+            company, brand, serial, reg, r[4] or "",
+            int_code, r[6] or "", r[7] or "", gs, date,
         ])
     return out
 
 
-def _fetch_blacklist():
-    """生成黑名单品牌数据: 2 列
-    列: 公司名称 | 品牌名
+def _fetch_tro_brands():
+    """生成 TRO品牌库 数据: 3 列
+    列: 公司名称 | 品牌名 | 入库日期
     (按 real_company + mark 去重的 company-brand 对照)
+    保留飞书中已有记录的入库日期，只给新品牌赋今日日期。
     """
+    # 读取飞书现有日期映射，避免覆写历史入库日期
+    existing_dates = {}
+    try:
+        sid = SHEET_IDS["tro_brands"]
+        existing_rows = read_range(sid, start_row=2, end_col="C")
+        for r in existing_rows:
+            if len(r) >= 2 and r[0] and r[1]:
+                key = (str(r[0]).strip(), str(r[1]).strip())
+                existing_dates[key] = _normalize_date(r[2] if len(r) >= 3 else None)
+        print(f"    读取已有入库日期: {len(existing_dates)} 条")
+    except Exception as e:
+        print(f"    读取已有日期失败 (将全用今日日期): {e}")
+
     conn = psycopg2.connect(DB_CONN)
     cur = conn.cursor()
     cur.execute("""
@@ -148,22 +219,46 @@ def _fetch_blacklist():
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    return [[r[0] or "", r[1] or ""] for r in rows]
+
+    today = time.strftime("%Y-%m-%d")
+    out = []
+    for r in rows:
+        company = r[0] or ""
+        brand = r[1] or ""
+        date = existing_dates.get((company, brand)) or today
+        out.append([company, brand, date])
+    return out
+
+
+def _read_other_collected():
+    """从飞书读取 '其他收集' sheet 的品牌数据.
+    返回 list of [品牌名, 来源, 入库日期].
+    """
+    sid = SHEET_IDS["other_collected"]
+    rows = read_range(sid, start_row=2, end_col="C")  # 跳过表头
+    out = []
+    for r in rows:
+        brand = (str(r[0]) or "").strip() if len(r) > 0 and r[0] else ""
+        source = (str(r[1]) or "").strip() if len(r) > 1 and r[1] else ""
+        date = _normalize_date(r[2] if len(r) > 2 else None)
+        if brand:
+            out.append([brand, source, date])
+    return out
 
 
 def _fetch_not_found():
-    """生成未找到清单数据: 7 列
-    列: 案件号 | 原告名 | 品牌名 | 匹配质量 | 起诉类型 | 审核原因 | 品牌=原告
+    """生成未找到清单数据: 8 列
+    列: 立案日期 | 案件号 | 原告名 | 品牌名 | 匹配质量 | 起诉类型 | 审核原因 | 品牌=原告
     """
     conn = psycopg2.connect(DB_CONN)
     cur = conn.cursor()
     cur.execute("""
-        SELECT mc.case_number, mc.plaintiff_clean, mc.brand_clean, mc.match_quality,
+        SELECT tc.date_filed, mc.case_number, mc.plaintiff_clean, mc.brand_clean, mc.match_quality,
                tc.nature_of_suit, mc.review_reason, tc.brand_eq_plaintiff
         FROM matched_companies mc
         LEFT JOIN tro_cases tc ON mc.case_number = tc.case_number
         WHERE mc.match_quality = 'not_found'
-        ORDER BY tc.nature_of_suit, mc.case_number
+        ORDER BY tc.date_filed DESC NULLS LAST, mc.case_number DESC
     """)
     rows = cur.fetchall()
     cur.close()
@@ -172,13 +267,14 @@ def _fetch_not_found():
     out = []
     for r in rows:
         out.append([
-            r[0] or "",
+            str(r[0]) if r[0] else "",
             r[1] or "",
             r[2] or "",
             r[3] or "",
             r[4] or "",
             r[5] or "",
-            "是" if r[6] else "否",
+            r[6] or "",
+            "是" if r[7] else "否",
         ])
     return out
 
@@ -220,21 +316,71 @@ def upload_company_overview():
 
 def upload_brand_details():
     data = _fetch_brand_details()
-    return _push("brand_details", data, end_col="I")
+    return _push("brand_details", data, end_col="J")
 
 
 def upload_not_found():
     data = _fetch_not_found()
-    return _push("not_found", data, end_col="G")
+    return _push("not_found", data, end_col="H")
 
 
-def upload_blacklist():
-    data = _fetch_blacklist()
-    return _push("blacklist", data, end_col="B")
+def upload_tro_brands():
+    """推送 TRO品牌库 (公司名称 | 品牌名 | 入库日期)"""
+    data = _fetch_tro_brands()
+    return _push("tro_brands", data, end_col="C")
+
+
+def upload_merged_blacklist():
+    """合并 TRO品牌库 + 其他收集 → 黑名单品牌 (去重)
+
+    品牌名 | 来源 | 入库日期
+    - TRO品牌库来源 → 来源='TRO品牌', 日期保留 TRO品牌库中的入库日期
+    - 其他收集来源 → 来源=该行的来源值, 日期保留其他收集中的入库日期
+    """
+    today = time.strftime("%Y-%m-%d")
+    merged = {}  # brand_upper -> [品牌名, 来源, 入库日期]
+
+    # 1. 从飞书读 TRO品牌库 (保留已有入库日期)
+    print("    读取 TRO品牌库...")
+    tro_sid = SHEET_IDS["tro_brands"]
+    tro_rows = read_range(tro_sid, start_row=2, end_col="C")
+    tro_count = 0
+    for r in tro_rows:
+        brand = str(r[1]).strip() if len(r) >= 2 and r[1] else ""
+        if not brand:
+            continue
+        date = _normalize_date(r[2] if len(r) >= 3 else None) or today
+        key = brand.upper()
+        if key not in merged:
+            merged[key] = [brand, "TRO品牌", date]
+            tro_count += 1
+        else:
+            # 同品牌多公司时取最早日期
+            if date and date < merged[key][2]:
+                merged[key][2] = date
+    print(f"    TRO品牌: {tro_count} 个 (去重)")
+
+    # 2. 从飞书读 其他收集
+    print("    读取 其他收集...")
+    other = _read_other_collected()
+    print(f"    其他收集: {len(other)} 条")
+
+    other_added = 0
+    for row in other:
+        key = row[0].upper()
+        if key not in merged:
+            merged[key] = [row[0], row[1] or "其他", row[2] or today]
+            other_added += 1
+
+    # 按品牌名排序
+    data = sorted(merged.values(), key=lambda x: x[0].upper())
+    print(f"    合并去重: TRO={tro_count} + 其他新增={other_added} → {len(data)}")
+
+    return _push("merged_blacklist", data, end_col="C")
 
 
 def upload_all():
-    """按顺序推送四个 sheet (小的先写, 大的殿后)"""
+    """按顺序推送所有 sheet (小的先写, 大的殿后)"""
     print("=" * 60)
     print("飞书数据推送")
     print("=" * 60)
@@ -244,7 +390,9 @@ def upload_all():
     print()
     results["not_found"] = upload_not_found()
     print()
-    results["blacklist"] = upload_blacklist()
+    results["tro_brands"] = upload_tro_brands()
+    print()
+    results["merged_blacklist"] = upload_merged_blacklist()
     print()
     results["brand_details"] = upload_brand_details()
     print()
@@ -266,8 +414,10 @@ if __name__ == "__main__":
             upload_brand_details()
         elif action == "notfound":
             upload_not_found()
+        elif action == "tro":
+            upload_tro_brands()
         elif action == "blacklist":
-            upload_blacklist()
+            upload_merged_blacklist()
         else:
             upload_all()
     else:

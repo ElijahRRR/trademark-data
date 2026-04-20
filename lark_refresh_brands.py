@@ -20,9 +20,10 @@ import psycopg2
 
 from lark_process import collect_brands_for_companies
 from lark_upload import (
-    upload_blacklist,
     upload_brand_details,
     upload_company_overview,
+    upload_merged_blacklist,
+    upload_tro_brands,
 )
 
 
@@ -77,11 +78,13 @@ def main():
     print("\n[1/2] 全量刷新 company_brand_details")
     company_count, brand_count = refresh_all_brands()
 
-    # Step 2: 推送依赖 company_brand_details 的 3 张表
+    # Step 2: 推送依赖 company_brand_details 的表
     print("\n[2/2] 推送到飞书 (依赖 company_brand_details 的表)")
     upload_company_overview()  # 活跃品牌数列依赖 company_brand_details
     print()
-    upload_blacklist()          # 公司-品牌对照
+    upload_tro_brands()         # TRO品牌库 (公司-品牌对照 + 入库日期)
+    print()
+    upload_merged_blacklist()   # 黑名单品牌 (TRO品牌库 ∪ 其他收集)
     print()
     upload_brand_details()      # 品牌明细
 

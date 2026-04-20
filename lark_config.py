@@ -15,8 +15,10 @@ SPREADSHEET_TOKEN = "ZkL0sFqKMhNO1vtq3t1cn8X7nhg"
 SPREADSHEET_TITLE = "TRO案件及商标黑名单"
 
 SHEET_IDS = {
-    "blacklist": "sdO3YJ",      # 黑名单品牌库 (参考)
-    "tro_cases": "34f9f3",       # Tro案件 (源数据)
+    "tro_brands": "sdO3YJ",       # TRO品牌库 (公司-品牌对照, 来自 company_brand_details)
+    "other_collected": "gTrLP3",   # 其他收集 (沃尔玛合规 / 历史集成等外部来源)
+    "merged_blacklist": "jF8dOw",  # 黑名单品牌 (TRO品牌库 + 其他收集 的去重合并)
+    "tro_cases": "34f9f3",         # Tro案件 (源数据)
     "company_overview": "ym27aR",  # 公司概览 (输出)
     "brand_details": "6IpYri",     # 品牌明细 (输出)
     "not_found": "wynwtK",         # 未找到清单 (输出)
