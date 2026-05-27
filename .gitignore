@@ -1,7 +1,12 @@
 design_images/
 raw/
+archive/
 *.log
 .lark_secret
+.llm_secret
+API Key.txt
+.git.backup/
+.DS_Store
 venv_lark/
 __pycache__/
 *.pyc
